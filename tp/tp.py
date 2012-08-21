@@ -29,7 +29,7 @@ class AutoScaleInfo:
         self.autoscale = boto.connect_autoscale()
         ags = self.autoscale.get_all_groups()
         self.name = autoscale_group_name
-        
+
         try:
             self.ag = [x for x in ags if x.name == self.name][0]
         except:
@@ -47,7 +47,7 @@ class AutoScaleInfo:
 
         self.load_balancers = self.ag.load_balancers
         self.desired_capacity = self.ag.desired_capacity
-        
+
 
     def __repr__(self):
         return "<AutoScaleInfo Group:%s>" % self.name
@@ -105,7 +105,7 @@ class TPManager:
                 candidate = self.tapping_group.desired_capacity + 1
             elif candidate - self.tapping_group.desired_capacity < -1:
                 candidate = self.tapping_group.desired_capacity - 1
-                
+
             # Never less than one
             if candidate < 1:
                 candidate = 1
@@ -142,7 +142,7 @@ class TPManager:
 
         user_data_fields = {
             "loadbalancer": ",".join(self.tapping_group.load_balancers),
-            "name": "Platform OD %s" % self.tapping_group.name,
+            "name": "OD instance %s" % self.tapping_group.name,
             "aws_key": os.getenv("AWS_ACCESS_KEY_ID"),
             "aws_secret": os.getenv("AWS_SECRET_ACCESS_KEY"),
         }
@@ -178,7 +178,7 @@ class TPManager:
 
         user_data_fields = {
             "loadbalancer": ",".join(self.tapping_group.load_balancers),
-            "name": "Platform TP %s" % self.tapping_group.name,
+            "name": "TP instance %s" % self.tapping_group.name,
             "aws_key": os.getenv("AWS_ACCESS_KEY_ID"),
             "aws_secret": os.getenv("AWS_SECRET_ACCESS_KEY"),
         }
@@ -299,7 +299,7 @@ class TPManager:
 
         if self.managed_instances() <= self.get_target():
             return False
-            
+
 
         for bid in self.valid_bids():
             if bid.state == "open":

@@ -1,4 +1,4 @@
-#!/usr/bi/env python
+#!/usr/bin/env python
 
 import datetime
 import boto
