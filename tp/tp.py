@@ -24,6 +24,7 @@ logger.setLevel(logging.DEBUG)
 class AutoScaleInfoException(Exception):
     pass
 
+
 class AutoScaleInfo:
     def __init__(self, autoscale_group_name):
         self.autoscale = boto.connect_autoscale()
@@ -54,12 +55,12 @@ class AutoScaleInfo:
 
 
 class TPManager:
+    # TODO: move to conf
     MAX_PRICE = { "c1.xlarge": "0.900" }
 
     def __init__(self, side_group):
         self.side_group = side_group
         self.tapping_group = AutoScaleInfo(side_group)
-
 
         self.target = None
         self.last_change = 0
@@ -74,7 +75,6 @@ class TPManager:
 
         self.guesser = cw.CPUTendenceGuesser(self.tapping_group.name, 45, 27)
 
-
     def refresh(self):
         self.tapping_group = AutoScaleInfo(self.side_group)
         self.guess_target()
@@ -82,11 +82,13 @@ class TPManager:
             logger.info(">> refresh(): autoscale instance count changed from %s to %s" % (self.previous_as_count, self.managed_by_autoscale()))
             if self.previous_as_count != None:
                 self.last_change = time.time()
+
             self.previous_as_count = self.managed_by_autoscale()
 
     def guess_target(self):
         if self.target == None:
             self.target = self.managed_instances()
+
         previous = self.target
         # How many instances we should keep running
         if time.time() - self.last_change > 360:
@@ -97,8 +99,6 @@ class TPManager:
             if len(self.live) == candidate:
                 candidate += bias
             logger.debug("Candidate " + str(candidate))
-
-
 
             # At most one more than autoscale or one less
             if candidate - self.tapping_group.desired_capacity > 1:
@@ -116,8 +116,6 @@ class TPManager:
             if candidate != previous:
                 logger.debug(">> guess_target(): changed target from %s to %s" % (previous, candidate))
                 self.target = candidate
-
-
 
     def get_target(self):
         return self.target
@@ -183,7 +181,6 @@ class TPManager:
             "aws_secret": os.getenv("AWS_SECRET_ACCESS_KEY"),
         }
 
-
         user_data = USER_DATA_TEMPLATE % (user_data_fields)
         request = self.ec2.request_spot_instances(
             price = self.MAX_PRICE[tapping_group.instance_type],
@@ -209,7 +206,6 @@ class TPManager:
 
     def user_data(self):
         return "SELF-MANAGED\nload_balancers=%s\n" % (",".join(self.tapping_group.load_balancers))
-
 
     def check_alive(self, spot_request):
         all_instances = self.ec2.get_all_instances()
@@ -264,6 +260,7 @@ class TPManager:
             if self.proximity(instance) < 10 and self.proximity(instance) > 2 and self.managed_instances() <= self.get_target():
                 logger.info(">> maybe_replace(): attempting to replace %s" % (instance.id))
                 self.bid(force=True)
+
             self.load_state()
 
     def proximity(self, instance_or_spot):
@@ -299,7 +296,6 @@ class TPManager:
 
         if self.managed_instances() <= self.get_target():
             return False
-
 
         for bid in self.valid_bids():
             if bid.state == "open":
@@ -376,14 +372,18 @@ class TPManager:
                 self.buy(previous_managed)
                 self.load_state()
                 managed = self.managed_instances()
+
             if self.emergency:
                 self.maybe_replace()
+
             if managed < target:
                 self.bid()
                 self.load_state()
                 managed = self.managed_instances()
+
             for new in self.ready_instances():
                 self.maybe_promote(new)
+
             self.maybe_demote()
             previous_managed = managed
             time.sleep(20)
@@ -393,6 +393,7 @@ def daemonize():
     pid = os.fork()
     if pid > 0:
         sys.exit()
+
     os.chdir("/")
     os.setsid()
     pid = os.fork()
