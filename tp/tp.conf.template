@@ -1,0 +1,12 @@
+{
+    "max_price": {
+        "c1.xlarge": "0.750"
+    },
+
+    "max_candidates": 6,
+    "instance_name": "instance",
+    "placement": "us-east-1a",
+    "health_check_path": "ping",
+    "lower_cpu": 30,
+    "upper_cpu": 50
+}

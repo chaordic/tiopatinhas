@@ -23,3 +23,6 @@ actually about 50% idle so that the system can responde to changes in access
 patterns. How much you can commit to Spot Instances is correlated to how low you
 keep your load during normal system operations. Needless to say, you shouldn't
 use Spot Instances in systems which are not fault tolerant.
+
+Copy the template conf file (tp.conf.template) to tp.conf so that the script
+can read it and make the changes according to your needs.
