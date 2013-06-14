@@ -13,7 +13,7 @@ import simplejson as json
 from collections import defaultdict
 
 USER_DATA_TEMPLATE = """\
-#chaordic-config
+#config
 name: %(name)s
 aws_key: %(aws_key)s
 aws_secret: %(aws_secret)s
