@@ -23,10 +23,3 @@ actually about 50% idle so that the system can responde to changes in access
 patterns. How much you can commit to Spot Instances is correlated to how low you
 keep your load during normal system operations. Needless to say, you shouldn't
 use Spot Instances in systems which are not fault tolerant.
-
-This is an initial open source release, so a few of the options are hardcoded
-in the main script.
-
-You should at the very least verify the upper and lower CPU bounds that are
-passed to CPUTendenceGuesser and verify what information gets passed to the
-servers as user-data in USER_DATA_TEMPLATE.

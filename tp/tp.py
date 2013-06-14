@@ -9,6 +9,8 @@ import os
 import traceback
 import logging
 import sys
+import simplejson as json
+from collections import defaultdict
 
 USER_DATA_TEMPLATE = """\
 #chaordic-config
@@ -20,6 +22,11 @@ load_balancers: %(loadbalancer)s"""
 logging.basicConfig(format='%(asctime)s %(name)s %(levelname)s %(message)s')
 logger = logging.getLogger("tp")
 logger.setLevel(logging.DEBUG)
+
+conf = defaultdict(dict)
+with open('./tp.conf', 'r') as f:
+    conf = json.loads(f.read())
+
 
 class AutoScaleInfoException(Exception):
     pass
@@ -55,8 +62,7 @@ class AutoScaleInfo:
 
 
 class TPManager:
-    # TODO: move to conf
-    MAX_PRICE = { "c1.xlarge": "0.900" }
+    MAX_PRICE = conf.get("max_price", {"c1.xlarge": "0.750"})
 
     def __init__(self, side_group):
         self.side_group = side_group
@@ -73,7 +79,7 @@ class TPManager:
         self.ec2 = boto.connect_ec2()
         self.elb = boto.connect_elb()
 
-        self.guesser = cw.CPUTendenceGuesser(self.tapping_group.name, 30, 50)
+        self.guesser = cw.CPUTendenceGuesser(self.tapping_group.name, conf.get("lower_cpu", 30), conf.get("upper_cpu", 50))
 
     def refresh(self):
         self.tapping_group = AutoScaleInfo(self.side_group)
@@ -109,8 +115,11 @@ class TPManager:
             # Never less than one
             if candidate < 1:
                 candidate = 1
-            if candidate > 6:
-                candidate = 6
+
+            max_candidates = conf.get("max_candidates", 6)
+            if candidate > max_candidates:
+                candidate = max_candidates
+
             logger.debug("Candidate " + str(candidate))
 
             if candidate != previous:
@@ -140,7 +149,7 @@ class TPManager:
 
         user_data_fields = {
             "loadbalancer": ",".join(self.tapping_group.load_balancers),
-            "name": "OD instance %s" % self.tapping_group.name,
+            "name": "OD %s %s" % (conf.get("instance_name", "instance"), self.tapping_group.name),
             "aws_key": os.getenv("AWS_ACCESS_KEY_ID"),
             "aws_secret": os.getenv("AWS_SECRET_ACCESS_KEY"),
         }
@@ -151,7 +160,7 @@ class TPManager:
         for c in range(amount):
             r = ami.run(security_groups = tapping_group.security_groups,
                 instance_type = tapping_group.instance_type,
-                placement = "us-west-1a",
+                placement = conf.get("placement", "us-east-1a"),
                 user_data = user_data)
             logger.info(">> buy(): purchased 1 on-demand instance")
             time.sleep(3)
@@ -176,7 +185,7 @@ class TPManager:
 
         user_data_fields = {
             "loadbalancer": ",".join(self.tapping_group.load_balancers),
-            "name": "TP instance %s" % self.tapping_group.name,
+            "name": "TP %s %s" % (conf.get("instance_name", "instance"), self.tapping_group.name),
             "aws_key": os.getenv("AWS_ACCESS_KEY_ID"),
             "aws_secret": os.getenv("AWS_SECRET_ACCESS_KEY"),
         }
@@ -187,7 +196,7 @@ class TPManager:
             image_id = tapping_group.image_id,
             count = 1,
             type = "one-time",
-            placement = "us-west-1a",
+            placement = conf.get("placement", "us-east-1a"),
             security_groups = tapping_group.security_groups,
             user_data = user_data,
             instance_type = tapping_group.instance_type)
@@ -213,7 +222,7 @@ class TPManager:
             inst = instance.instances[0]
             if inst.id == spot_request.instance_id and inst.state == "running":
                 try:
-                    webob = urlopen("http://%s/" % inst.dns_name)
+                    webob = urlopen("http://%s/%s" % (inst.dns_name, conf.get("health_check_path", "ping")))
                     response = webob.getcode()
                     if response == 200:
                         return True
