@@ -12,7 +12,7 @@ class TendenceGuesser:
         pass
 
 class CPUTendenceGuesser:
-    def __init__(self, ag_name, upper, lower):
+    def __init__(self, ag_name, lower, upper):
         self.cloudwatch = boto.connect_cloudwatch()
         self.upper = upper - 3
         self.lower = lower + 3
