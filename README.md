@@ -22,7 +22,7 @@ Our theory of operations is that even when the system is live, each server is
 actually about 50% idle so that the system can responde to changes in access
 patterns. How much you can commit to Spot Instances is correlated to how low you
 keep your load during normal system operations. Needless to say, you shouldn't
-use Spot Instances in systems which are not fault tolerant, 
+use Spot Instances in systems which are not fault tolerant.
 
 This is an initial open source release, so a few of the options are hardcoded
 in the main script.
