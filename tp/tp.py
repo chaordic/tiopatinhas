@@ -456,6 +456,11 @@ availability's group load balancer.
     if do_daemonize:
         daemonize()
 
+    if not group:
+        logger.error("no autoscale group defined")
+        usage()
+        sys.exit(2)
+
     tp = TPManager(group)
     tp.run()
 
