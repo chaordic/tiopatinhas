@@ -39,8 +39,3 @@ class CPUTendenceGuesser:
             return -1
 
         return 0
-
-if __name__ == '__main__':
-    tg = CPUTendenceGuesser("raas-197-v2", 45, 27)
-    print tg.guess()
-
