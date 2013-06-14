@@ -19,7 +19,7 @@ load_balancers: %(loadbalancer)s"""
 
 logging.basicConfig(format='%(asctime)s %(name)s %(levelname)s %(message)s')
 logger = logging.getLogger("tp")
-
+logger.setLevel(logging.DEBUG)
 
 class AutoScaleInfoException(Exception):
     pass
@@ -92,11 +92,11 @@ class TPManager:
         if time.time() - self.last_change > 360:
             candidate = self.managed_instances()
             bias = self.guesser.guess()
-            logger.debug("Bias: " + bias)
+            logger.debug("Bias: " + str(bias))
 
             if len(self.live) == candidate:
                 candidate += bias
-            logger.debug("Candidate " + candidate)
+            logger.debug("Candidate " + str(candidate))
 
 
 
@@ -111,7 +111,7 @@ class TPManager:
                 candidate = 1
             if candidate > 6:
                 candidate = 6
-            logger.debug("Candidate", candidate)
+            logger.debug("Candidate " + str(candidate))
 
             if candidate != previous:
                 logger.debug(">> guess_target(): changed target from %s to %s" % (previous, candidate))
@@ -155,7 +155,7 @@ class TPManager:
                 instance_type = tapping_group.instance_type,
                 placement = "us-west-1a",
                 user_data = user_data)
-            print ">> buy(): purchased 1 on-demand instance"
+            logger.info(">> buy(): purchased 1 on-demand instance")
             time.sleep(3)
             instance = r.instances[0]
 
@@ -260,7 +260,7 @@ class TPManager:
 
     def maybe_replace(self):
         for instance in self.emergency:
-            print self.proximity(instance)
+            logger.info("self.proximity(instance): " + str(self.proximity(instance)))
             if self.proximity(instance) < 10 and self.proximity(instance) > 2 and self.managed_instances() <= self.get_target():
                 logger.info(">> maybe_replace(): attempting to replace %s" % (instance.id))
                 self.bid(force=True)
@@ -428,7 +428,7 @@ availability's group load balancer.
     try:
         opts, args = getopt.getopt(sys.argv[1:], "g:d", ["group=", "daemonize"])
     except getopt.GetoptError, err:
-        print str(err)
+        logger.error(str(err))
         usage()
         sys.exit(2)
 
@@ -448,3 +448,4 @@ availability's group load balancer.
 
     tp = TPManager(group)
     tp.run()
+

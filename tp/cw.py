@@ -27,7 +27,6 @@ class CPUTendenceGuesser:
 
         stats = self.cloudwatch.get_metric_statistics(60, start, end, 'CPUUtilization', 'AWS/EC2', 'Maximum', {'AutoScalingGroupName': self.ag_name})
         raw_stats = [x['Maximum'] for x in stats]
-        print raw_stats
 
         half = len(raw_stats) / 2
         old = raw_stats[:half]
