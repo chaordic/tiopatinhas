@@ -352,6 +352,11 @@ class TPManager:
             tp_name = req.tags.get('tp:name', None)
             if tp_name:
                 continue
+
+            tp_tag = req.tags.get('tp:tag', None)
+            if not tp_tag or tp_tag != self.side_group:
+                continue
+
             if not req.instance_id in running_in_lb:
                 self.bids.append(req)
             else:
