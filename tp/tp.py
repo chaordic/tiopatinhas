@@ -12,7 +12,7 @@ import sys
 import simplejson as json
 from collections import defaultdict
 
-USER_DATA_TEMPLATE = """\
+USER_DATA_TEMPLATE = """
 #config
 name: %(name)s
 aws_key: %(aws_key)s
@@ -181,6 +181,7 @@ class TPManager:
             logger.info("bid(): last change was too recent, skipping bid")
             time.sleep(10)
             return
+
         tapping_group = self.tapping_group
 
         user_data_fields = {
