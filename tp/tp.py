@@ -12,7 +12,7 @@ import sys
 import simplejson as json
 from collections import defaultdict
 
-USER_DATA_TEMPLATE = """
+USER_DATA_TEMPLATE = """\
 #config
 name: %(name)s
 aws_key: %(aws_key)s
@@ -155,6 +155,7 @@ class TPManager:
         }
 
         user_data = USER_DATA_TEMPLATE % (user_data_fields)
+        logger.debug(">> buy(): userdata", user_data)
 
         ami = self.ec2.get_image(tapping_group.image_id)
         for c in range(amount):
@@ -192,6 +193,7 @@ class TPManager:
         }
 
         user_data = USER_DATA_TEMPLATE % (user_data_fields)
+        logger.debug(">> bid(): userdata", user_data)
         request = self.ec2.request_spot_instances(
             price = self.MAX_PRICE[tapping_group.instance_type],
             image_id = tapping_group.image_id,
