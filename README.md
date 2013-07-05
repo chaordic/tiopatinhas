@@ -26,3 +26,5 @@ use Spot Instances in systems which are not fault tolerant.
 
 Copy the template conf file (tp.conf.template) to tp.conf so that the script
 can read it and make the changes according to your needs.
+
+Also, you need to add a script on startup and shutdown to use the information on your user data to create the proper name and attach/dettach the instance to the load balancer, but that is up to you :)
