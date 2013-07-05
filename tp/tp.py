@@ -149,13 +149,12 @@ class TPManager:
 
         user_data_fields = {
             "loadbalancer": ",".join(self.tapping_group.load_balancers),
-            "name": "OD %s %s" % (conf.get("instance_name", "instance"), self.tapping_group.name),
+            "name": "%s OD %s" % (conf.get("instance_name", "instance"), self.tapping_group.name),
             "aws_key": os.getenv("AWS_ACCESS_KEY_ID"),
             "aws_secret": os.getenv("AWS_SECRET_ACCESS_KEY"),
         }
 
         user_data = USER_DATA_TEMPLATE % (user_data_fields)
-        logger.debug(">> buy(): userdata", user_data)
 
         ami = self.ec2.get_image(tapping_group.image_id)
         for c in range(amount):
@@ -187,13 +186,13 @@ class TPManager:
 
         user_data_fields = {
             "loadbalancer": ",".join(self.tapping_group.load_balancers),
-            "name": "TP %s %s" % (conf.get("instance_name", "instance"), self.tapping_group.name),
+            "name": "%s TP %s" % (conf.get("instance_name", "instance"), self.tapping_group.name),
             "aws_key": os.getenv("AWS_ACCESS_KEY_ID"),
             "aws_secret": os.getenv("AWS_SECRET_ACCESS_KEY"),
         }
 
         user_data = USER_DATA_TEMPLATE % (user_data_fields)
-        logger.debug(">> bid(): userdata", user_data)
+
         request = self.ec2.request_spot_instances(
             price = self.MAX_PRICE[tapping_group.instance_type],
             image_id = tapping_group.image_id,
