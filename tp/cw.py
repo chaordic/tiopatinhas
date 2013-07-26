@@ -12,10 +12,12 @@ class TendenceGuesser:
         pass
 
 class CPUTendenceGuesser:
-    def __init__(self, ag_name, lower, upper):
+    def __init__(self, ag_name, lower, upper, lower_threshold, upper_threshold):
         self.cloudwatch = boto.connect_cloudwatch()
         self.upper = upper - 3
         self.lower = lower + 3
+        self.lower_threshold = lower_threshold
+        self.upper_threshold = upper_threshold
         self.ag_name = ag_name
 
     def avg(self, l):
@@ -32,10 +34,10 @@ class CPUTendenceGuesser:
         old = raw_stats[:half]
         new = raw_stats[half:]
 
-        if len(filter(lambda x: x > self.upper, new)) > 2:
+        if len(filter(lambda x: x > self.upper, new)) > self.upper_threshold:
             return 1
 
-        if len(filter(lambda x: x < self.lower, new)) > 2:
+        if len(filter(lambda x: x < self.lower, new)) > self.lower_threshold:
             return -1
 
         return 0

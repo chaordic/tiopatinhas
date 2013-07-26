@@ -8,5 +8,7 @@
     "placement": "us-east-1a",
     "health_check_path": "ping",
     "lower_cpu": 30,
-    "upper_cpu": 50
+    "upper_cpu": 50,
+    "lower_threshold": 2,
+    "upper_threshold": 2
 }

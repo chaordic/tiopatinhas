@@ -79,7 +79,7 @@ class TPManager:
         self.ec2 = boto.connect_ec2()
         self.elb = boto.connect_elb()
 
-        self.guesser = cw.CPUTendenceGuesser(self.tapping_group.name, conf.get("lower_cpu", 30), conf.get("upper_cpu", 50))
+        self.guesser = cw.CPUTendenceGuesser(self.tapping_group.name, conf.get("lower_cpu", 30), conf.get("upper_cpu", 50), conf.get("lower_threshold", 2), conf.get("upper_threshold", 2))
 
     def refresh(self):
         self.tapping_group = AutoScaleInfo(self.side_group)
