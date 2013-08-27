@@ -29,8 +29,8 @@ use Spot Instances in systems which are not fault tolerant.
 
 ### Before starting ###
 
-1. Make sure the boto python package is installed in your system. If you're 
-using debian or ubuntu you can install it by typing: 'sudo pip install boto'.
+1. Make sure the boto python package is installed in your system. If you 
+use debian or ubuntu you can install it by typing: 'sudo pip install boto'.
 2. Make sure your AWS credentials are specified in a boto configuration file 
 (typically ~/.boto). Instruction on how to setup this file can be found here: 
 https://code.google.com/p/boto/wiki/BotoConfig
@@ -44,15 +44,15 @@ currently supports the following properties:
     * *max_price:* A map that specifies the maximum bid prices for each type 
     of EC2 instance. TP will use the prices specified in this map to bid for 
     instances of that type in the spot market.
-    * *max_candidates:* The maximum number of instances TP will manage. *(advanced)*
+    * *max_candidates:* The maximum number of instances TP will manage.
     * *instance_name:* The prefix that will be used by TP to name managed instances.
-    * *region:* The AWS region where the AutoScaling instance is located.
+    * *region:* The AWS region where the AutoScaling group is located.
     * *placement:* The AWS availability zone where TP instances will be launched.
     * *health_check_path:*  Server HTTP path that must respond to health checks 
     before the TP instance is attached to the load balancer.
         * more info: http://docs.aws.amazon.com/AutoScaling/latest/DeveloperGuide/as-configure-healthcheck.html
-    * *lower_cpu:* The AutoScaling CPU treshold rule for scaling down.
-    * *upper_cpu:* The AutoScaling CPU treshold rule for scaling up.
+    * *lower_cpu:* The AutoScaling CPU treshold for scaling down.
+    * *upper_cpu:* The AutoScaling CPU treshold for scaling up.
     * *lower_treshold:* The amount of measurements below the *lower_cpu* TP will 
     consider before scaling down. *(advanced)*
     * *lower_treshold:* The amount of measurements above the *upper_cpu* TP will 
