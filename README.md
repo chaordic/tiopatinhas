@@ -1,7 +1,8 @@
-tiopatinhas
-===========
+# tiopatinhas #
 
-tiopatinhas is a companion for AWS's Auto Scaling. It attaches itself to an
+## Overview ##
+
+tiopatinhas (TP) is a companion for AWS's Auto Scaling. It attaches itself to an
 Availability Group and adds resources bought in Amazon's Spot market.
 
 As we can lose those instances at any time (due to market conditions),
@@ -24,7 +25,31 @@ patterns. How much you can commit to Spot Instances is correlated to how low you
 keep your load during normal system operations. Needless to say, you shouldn't
 use Spot Instances in systems which are not fault tolerant.
 
-Copy the template conf file (tp.conf.template) to tp.conf so that the script
-can read it and make the changes according to your needs.
+## Getting Started ##
 
-Also, you need to add a script on startup and shutdown to use the information on your user data to create the proper name and attach/dettach the instance to the load balancer, but that is up to you :)
+### Before starting ###
+
+1. Make sure the boto python package is installed in your system. If you're using debian or ubuntu you can install it by typing: 'sudo pip install boto'.
+2. Make sure your AWS credentials are specified in a boto configuration file (typically ~/.boto). Instruction on how to setup this file can be found here: https://code.google.com/p/boto/wiki/BotoConfig
+
+### Configuring tio patinhas ###
+
+1. Copy the template conf file (tp.conf.template) to tp/tp.conf so that the script can read it and make the changes according to your needs. Tio patinhas currently supports the following properties:
+
+* *max_price:* A map from instance types to max prices. TP will use the prices specified in this map to bid for instances of that type in the spot market.
+* *max_candidates:* The maximum number of instances TP will manage.
+* *instance_name:* The prefix that will be used by TP to name managed instances.
+* *region:* The AWS region where the AutoScaling instance is located.
+* *placement:* The AWS availability zone where TP instances will be launched.
+* *lower_cpu:* The AutoScaling CPU treshold rule for scaling down.
+* *upper_cpu:* The AutoScaling CPU treshold rule for scaling up.
+* *lower_treshold:* The amount of measurements below the *lower_cpu* TP will consider before scaling down. _(advanced)_
+* *lower_treshold:* The amount of measurements above the *upper_cpu* TP will consider before scaling up. _(advanced)_
+* *tags:* A map containing custom metadata tags that must assigned to TP instances. _(optional)_ (more info: http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/Using\_Tags.html) 
+* *user_data_file* An optional script or data that must be supplied to the instance on startup. _(optional)_ (more info: http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/AESDG-chapter-instancedata.html)
+
+### Executing tio patinhas ###
+
+1. Once the tp/tp.conf file is ready, execute tiopatinhas issuing the following command:
+    * _python tp.py -g <AutoScalingGroupName>_ (this command must currently be executed from the "tp" folder)
+        * You must additionally supply options "-v" for verbose mode or "-d" for daemon mode.
