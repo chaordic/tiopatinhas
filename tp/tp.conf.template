@@ -2,13 +2,15 @@
     "max_price": {
         "c1.xlarge": "0.750"
     },
-
     "max_candidates": 6,
     "instance_name": "instance",
+    "region": "us-east-1",
     "placement": "us-east-1a",
     "health_check_path": "ping",
     "lower_cpu": 30,
     "upper_cpu": 50,
     "lower_threshold": 2,
-    "upper_threshold": 2
+    "upper_threshold": 2,
+    "tags": {},
+    "user_data_file": null
 }
