@@ -35,7 +35,7 @@ use debian or ubuntu you can install it by typing: 'sudo pip install boto'.
 (typically ~/.boto). Instruction on how to setup this file can be found here: 
 https://code.google.com/p/boto/wiki/BotoConfig
 
-### Configuring tio patinhas ###
+### Configuring tiopatinhas ###
 
 * Copy the template conf file (tp.conf.template) to tp/tp.conf so that the 
 script can read it and make the changes according to your needs. Tio patinhas 
@@ -62,7 +62,7 @@ currently supports the following properties:
     * *user_data_file* An optional script or data that must be supplied to the instance on startup. _(optional)_ 
         * more info: http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/AESDG-chapter-instancedata.html
 
-### Executing tio patinhas ###
+### Executing tiopatinhas ###
 
 * Once the tp/tp.conf file is ready, execute tiopatinhas issuing the following command:
     * _python tp.py -g \<AutoScalingGroupName\>_ (this command must currently be executed from within the "tp" folder)
