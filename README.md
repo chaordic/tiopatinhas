@@ -34,22 +34,22 @@ use Spot Instances in systems which are not fault tolerant.
 
 ### Configuring tio patinhas ###
 
-1. Copy the template conf file (tp.conf.template) to tp/tp.conf so that the script can read it and make the changes according to your needs. Tio patinhas currently supports the following properties:
+* Copy the template conf file (tp.conf.template) to tp/tp.conf so that the script can read it and make the changes according to your needs. Tio patinhas currently supports the following properties:
 
-* *max_price:* A map from instance types to max prices. TP will use the prices specified in this map to bid for instances of that type in the spot market.
-* *max_candidates:* The maximum number of instances TP will manage.
-* *instance_name:* The prefix that will be used by TP to name managed instances.
-* *region:* The AWS region where the AutoScaling instance is located.
-* *placement:* The AWS availability zone where TP instances will be launched.
-* *lower_cpu:* The AutoScaling CPU treshold rule for scaling down.
-* *upper_cpu:* The AutoScaling CPU treshold rule for scaling up.
-* *lower_treshold:* The amount of measurements below the *lower_cpu* TP will consider before scaling down. _(advanced)_
-* *lower_treshold:* The amount of measurements above the *upper_cpu* TP will consider before scaling up. _(advanced)_
-* *tags:* A map containing custom metadata tags that must assigned to TP instances. _(optional)_ (more info: http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/Using\_Tags.html) 
-* *user_data_file* An optional script or data that must be supplied to the instance on startup. _(optional)_ (more info: http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/AESDG-chapter-instancedata.html)
+    * *max_price:* A map from instance types to max prices. TP will use the prices specified in this map to bid for instances of that type in the spot market.
+    * *max_candidates:* The maximum number of instances TP will manage.
+    * *instance_name:* The prefix that will be used by TP to name managed instances.
+    * *region:* The AWS region where the AutoScaling instance is located.
+    * *placement:* The AWS availability zone where TP instances will be launched.
+    * *lower_cpu:* The AutoScaling CPU treshold rule for scaling down.
+    * *upper_cpu:* The AutoScaling CPU treshold rule for scaling up.
+    * *lower_treshold:* The amount of measurements below the *lower_cpu* TP will consider before scaling down. _(advanced)_
+    * *lower_treshold:* The amount of measurements above the *upper_cpu* TP will consider before scaling up. _(advanced)_
+    * *tags:* A map containing custom metadata tags that must assigned to TP instances. _(optional)_ (more info: http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/Using_Tags.html) 
+    * *user_data_file* An optional script or data that must be supplied to the instance on startup. _(optional)_ (more info: http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/AESDG-chapter-instancedata.html)
 
 ### Executing tio patinhas ###
 
-1. Once the tp/tp.conf file is ready, execute tiopatinhas issuing the following command:
-    * _python tp.py -g <AutoScalingGroupName>_ (this command must currently be executed from the "tp" folder)
+* Once the tp/tp.conf file is ready, execute tiopatinhas issuing the following command:
+    * _python tp.py -g \<AutoScalingGroupName\>_ (this command must currently be executed from the "tp" folder)
         * You must additionally supply options "-v" for verbose mode or "-d" for daemon mode.
