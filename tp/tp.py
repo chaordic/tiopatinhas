@@ -19,14 +19,6 @@ logging.basicConfig(format='%(asctime)s %(name)s %(levelname)s %(message)s')
 logger = logging.getLogger("main")
 logger.setLevel(logging.DEBUG)
 
-conf = defaultdict(dict)
-try:
-    with open('./tp.conf', 'r') as f:
-        conf = json.loads(f.read())
-except IOError:
-    logger.error("Configuration file 'tp.conf' not found.")
-    sys.exit(2)
-
 class AutoScaleInfoException(Exception):
     pass
 
@@ -60,17 +52,31 @@ class AutoScaleInfo:
 
 
 class TPManager:
-    def __init__(self, side_group, debug=False, region=None, user_data=None):
+    def __init__(self, side_group, debug=False, region=None, user_data=None, conf_file="tp.conf", az=None):
         self.logger = logging.getLogger(side_group)
         if debug:
             self.logger.setLevel(logging.DEBUG)
         else:
             self.logger.setLevel(logging.INFO)
 
-        self.max_price = conf.get("max_price", {"c1.xlarge": "0.750"})
-        self.tags = conf.get("tags", {})
-        self.region = region or conf.get("region", "us-east-1") #parameter has precedence over config file
+        self.conf = defaultdict(dict)
+        try:
+            with open(conf_file, 'r') as f:
+                self.conf = json.loads(f.read())
+        except IOError:
+            self.logger.error("Configuration file " + conf_file + " not found.")
+            sys.exit(2)
 
+        self.max_price = self.conf.get("max_price", {"c1.xlarge": "0.750"})
+        self.spot_type = self.conf.get("spot_type", "c1.xlarge")
+        self.emergency_type = self.conf.get("emergency_type", "c1.xlarge")
+        self.tags = self.conf.get("tags", {})
+        self.region = region or self.conf.get("region", "us-east-1") #parameter has precedence over config file
+
+        if az:
+            self.placement = self.region + az 
+        else:
+            self.placement = self.conf.get("placement", "us-east-1c")
         self.side_group = side_group
         self.tapping_group = AutoScaleInfo(self.side_group, self.region)
 
@@ -86,10 +92,10 @@ class TPManager:
         self.ec2 = boto.ec2.connect_to_region(self.region)
         self.elb = boto.ec2.elb.connect_to_region(self.region)
 
-        self.guesser = cw.CPUTendenceGuesser(self.tapping_group.name, conf.get("lower_cpu", 30), conf.get("upper_cpu", 50), conf.get("lower_threshold", 2), conf.get("upper_threshold", 2))
+        self.guesser = cw.CPUTendenceGuesser(self.tapping_group.name, self.conf.get("lower_cpu", 30), self.conf.get("upper_cpu", 50), self.conf.get("lower_threshold", 2), self.conf.get("upper_threshold", 2))
 
         self.user_data = user_data
-        user_data_file = conf.get("user_data_file", None)
+        user_data_file = self.conf.get("user_data_file", None)
         if not user_data and user_data_file:
             try:
                 with open(user_data_file) as f:
@@ -114,6 +120,7 @@ class TPManager:
         if self.target == None:
             self.target = self.managed_instances()
         previous = self.target
+
         # How many instances we should keep running
         if time.time() - self.last_change > 360:
             candidate = self.managed_instances()
@@ -133,7 +140,7 @@ class TPManager:
             if candidate < 1:
                 candidate = 1
 
-            max_candidates = conf.get("max_candidates", 6)
+            max_candidates = self.conf.get("max_candidates", 6)
             if candidate > max_candidates:
                 candidate = max_candidates
 
@@ -172,8 +179,8 @@ class TPManager:
         ami = self.ec2.get_image(tapping_group.image_id)
         for c in range(amount):
             r = ami.run(security_groups = tapping_group.security_groups,
-                    instance_type = tapping_group.instance_type,
-                    placement = conf.get("placement", "us-east-1a"),
+                    instance_type = self.emergency_type,
+                    placement = self.placement,
                     user_data = self.user_data)
             self.logger.info(">> buy(): purchased 1 on-demand instance")
             time.sleep(3)
@@ -198,14 +205,15 @@ class TPManager:
         tapping_group = self.tapping_group
 
         request = self.ec2.request_spot_instances(
-                price = self.max_price[tapping_group.instance_type],
+                price = self.max_price[self.spot_type],
                 image_id = tapping_group.image_id,
                 count = 1,
                 type = "one-time",
-                placement = conf.get("placement", "us-east-1a"),
+                placement = self.placement,
                 security_groups = tapping_group.security_groups,
                 user_data = self.user_data,
-                instance_type = tapping_group.instance_type)
+                instance_type = self.spot_type,
+                monitoring_enabled = True)
         while 1:
             try:
                 request[0].add_tag('tp:tag', self.side_group)
@@ -214,7 +222,7 @@ class TPManager:
                 traceback.print_exc()
                 time.sleep(3)
 
-        self.logger.info(">> bid(): created 1 bid")
+        self.logger.info(">> bid(): created 1 bid of %s for %s" % (self.spot_type, self.max_price[self.spot_type]))
         self.last_change = time.time()
 
         self.bids.append(request)
@@ -226,7 +234,7 @@ class TPManager:
 
             if inst.id == spot_request.instance_id and inst.state == "running":
                 try:
-                    health_check_url = "http://%s/%s" % (inst.dns_name, conf.get("health_check_path", "")) 
+                    health_check_url = "https://%s/%s" % (inst.dns_name, self.conf.get("health_check_path", "")) 
                     webob = urlopen(health_check_url)
                     response = webob.getcode()
                     self.logger.debug("Checking instance %s health on url %s. Response: %d" % (inst.id, health_check_url, response))
@@ -244,7 +252,7 @@ class TPManager:
         instance_id = getattr(instance_or_spot, 'instance_id', None) or instance_or_spot.id
 
         tags = self.tags.copy()
-        tags['Name'] = "%s %s %s" % (conf.get("instance_name", "instance"), infix, self.side_group)
+        tags['Name'] = "%s %s %s" % (self.conf.get("instance_name", "instance"), infix, self.side_group)
         self.ec2.create_tags([instance_id], tags)
 
         for lb in lbs:
@@ -398,35 +406,41 @@ class TPManager:
  
     def run(self):
         self.start()
-        previous_managed = 0
+        self.previous_managed = 0
         self.logger.info("Starting Tio Patinhas")
         while self.started or self.managed_instances() > 0:
-            self.logger.debug("Refreshing state...")
-            self.load_state()
-            self.refresh()
-            self.print_state()
-
-            if self.started and previous_managed > 0 and self.live_or_emergency() == 0:
-                self.logger.warn(">> market crashed! launching %s instances" % previous_managed)
-                self.buy(previous_managed)
-                self.load_state()
-
-            if self.emergency:
-                self.maybe_replace()
-
-            if self.managed_instances() < self.get_target():
-                self.bid()
-                self.load_state()
-
-            for new in self.ready_instances():
-                self.maybe_promote(new)
-
-            self.maybe_demote()
-            previous_managed = self.live_or_emergency()
-
+            try:
+                self.save_money()
+            except Exception, e:
+                logger.error(e)
+ 
             flush_output()
             time.sleep(20)
         self.logger.debug("Stopped running.")
+
+    def save_money(self):
+        self.logger.debug("Refreshing state...")
+        self.load_state()
+        self.refresh()
+        self.print_state()
+
+        if self.started and self.previous_managed > 0 and self.live_or_emergency() == 0:
+            self.logger.warn(">> market crashed! launching %s %s instances" % (to_buy, self.emergency_type))
+            self.buy(self.previous_managed)
+            self.load_state()
+
+        if self.emergency:
+            self.maybe_replace()
+
+        if self.managed_instances() < self.get_target():
+            self.bid()
+            self.load_state()
+
+        for new in self.ready_instances():
+            self.maybe_promote(new)
+
+        self.maybe_demote()
+        self.previous_managed = self.live_or_emergency()
 
 def flush_output():
     sys.stdout.flush()

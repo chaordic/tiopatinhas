@@ -1,3 +1,12 @@
+## 0.1.1 (November 21, 2013)
+
+Features:
+    - Added spot and emergency type configuration (advanced feature that allows to use instance types different from the ASG)
+    - Enable cloudwatch spot instances monitoring
+
+Bugfixes:
+    - Added fault tolerance to HTTP request errors (will now log error instead of crashing)
+
 ## 0.1.0 (August 27, 2013)
 
 Features:

@@ -1,7 +1,11 @@
 {
     "max_price": {
-        "c1.xlarge": "0.750"
+        "c1.xlarge": "0.70",
+        "m2.2xlarge": "0.60",
+        "m2.4xlarge": "0.66"
     },
+    "spot_type": "m2.4xlarge",
+    "emergency_type": "c1.xlarge",
     "max_candidates": 6,
     "instance_name": "instance",
     "region": "us-east-1",
