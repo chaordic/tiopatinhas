@@ -43,33 +43,33 @@ currently supports the following properties:
 
 #### Mandatory Properties
 
-    * *max_price:* A map that specifies the maximum bid prices for each type 
-    of EC2 instance. TP will use the prices specified in this map to bid for 
-    instances of that type in the spot market.
-    * *max_candidates:* The maximum number of instances TP will manage.
-    * *instance_name:* The prefix that will be used by TP to name managed instances.
-    * *region:* The AWS region where the AutoScaling group is located.
-    * *placement:* The AWS availability zone where TP instances will be launched.
-    * *health_check_path:*  Server HTTP path that must respond to health checks 
-    before the TP instance is attached to the load balancer.
-        * more info: http://docs.aws.amazon.com/AutoScaling/latest/DeveloperGuide/as-configure-healthcheck.html
-    * *lower_cpu:* The AutoScaling CPU treshold for scaling down.
-    * *upper_cpu:* The AutoScaling CPU treshold for scaling up.
+* *max_price:* A map that specifies the maximum bid prices for each type 
+  of EC2 instance. TP will use the prices specified in this map to bid for 
+  instances of that type in the spot market.
+* *max_candidates:* The maximum number of instances TP will manage.
+* *instance_name:* The prefix that will be used by TP to name managed instances.
+* *region:* The AWS region where the AutoScaling group is located.
+* *placement:* The AWS availability zone where TP instances will be launched.
+* *health_check_path:*  Server HTTP path that must respond to health checks 
+  before the TP instance is attached to the load balancer.
+  * more info: http://docs.aws.amazon.com/AutoScaling/latest/DeveloperGuide/as-configure-healthcheck.html
+* *lower_cpu:* The AutoScaling CPU treshold for scaling down.
+* *upper_cpu:* The AutoScaling CPU treshold for scaling up.
 
 #### Advanced properties
 
-    * *spot_type* The instance type to bid for in the spot market (recommended: the same instance from the ASG)
-    * *emergency_type* The instance type to buy in case of market crash (recommended: the same instance from the ASG)
-    * *lower_treshold:* The amount of measurements below the *lower_cpu* TP will 
-    consider before scaling down. *(advanced)*
-    * *lower_treshold:* The amount of measurements above the *upper_cpu* TP will 
-    consider before scaling up. *(advanced)*
+* *spot_type* The instance type to bid for in the spot market (recommended: the same instance from the ASG)
+* *emergency_type* The instance type to buy in case of market crash (recommended: the same instance from the ASG)
+* *lower_treshold:* The amount of measurements below the *lower_cpu* TP will 
+  consider before scaling down. *(advanced)*
+* *lower_treshold:* The amount of measurements above the *upper_cpu* TP will 
+  consider before scaling up. *(advanced)*
 
 #### Optional properties
-    * *tags:* A map containing custom metadata tags that must assigned to TP instances. *(optional)*
-        * more info: http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/Using_Tags.html
-    * *user_data_file* An optional script or data that must be supplied to the instance on startup. _(optional)_ 
-        * more info: http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/AESDG-chapter-instancedata.html
+* *tags:* A map containing custom metadata tags that must assigned to TP instances. *(optional)*
+    * more info: http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/Using_Tags.html
+* *user_data_file* An optional script or data that must be supplied to the instance on startup. _(optional)_ 
+    * more info: http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/AESDG-chapter-instancedata.html
 
 ### Executing tiopatinhas ###
 
