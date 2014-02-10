@@ -425,7 +425,7 @@ class TPManager:
         self.print_state()
 
         if self.started and self.previous_managed > 0 and self.live_or_emergency() == 0:
-            self.logger.warn(">> market crashed! launching %s %s instances" % (to_buy, self.emergency_type))
+            self.logger.warn(">> market crashed! launching %s %s instances" % (self.previous_managed, self.emergency_type))
             self.buy(self.previous_managed)
             self.load_state()
 
