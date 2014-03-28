@@ -350,10 +350,6 @@ class TPManager:
 
         return False
 
-    def remove_from_lb(self, lb, instance):
-        self.logger.info("Removing instance " + instance.id + " from LB")
-        lb.deregister_instances([instance.id])
-
     def load_state(self):
         self.bids = []
         self.live = []
@@ -374,11 +370,11 @@ class TPManager:
                     if len(instance_status) > 0 and instance_status[0].state_name == u'running':
                         running_in_lb.append(instance.id)
                     else:
-                        self.remove_from_lb(lb, instance)
+                        self.dettach_instance(instance)
                 except EC2ResponseError as inst:
                     if inst.error_code == "InvalidInstanceID.NotFound":
                         self.logger.error(inst)
-                        self.remove_from_lb(lb, instance)
+                        self.dettach_instance(instance)
 
 
 
