@@ -366,13 +366,15 @@ class TPManager:
                 try:
                     # Some times some dead instances get stuck on LB and boto lib doesn't know how to treat it
                     # This make sure that instance is alive and avoid bug on get_all_instances method
-                    self.ec2.get_all_instance_status(instance_ids=[instance.id])
-                    running_in_lb.append(instance.id)
+                    instance_status = self.ec2.get_all_instance_status(instance_ids=[instance.id])
+                    if len(instance_status) > 0 and instance_status[0].state_name == u'running':
+                        running_in_lb.append(instance.id)
+                    else:
+                        self.dettach_instance(instance)
                 except EC2ResponseError as inst:
                     if inst.error_code == "InvalidInstanceID.NotFound":
                         self.logger.error(inst)
-                        self.logger.info("Removing instance " + instance.id + "from LB")
-                        lb.deregister_instances([instance.id])
+                        self.dettach_instance(instance)
 
 
 
