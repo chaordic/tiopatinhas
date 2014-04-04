@@ -373,7 +373,7 @@ class TPManager:
                         self.dettach_instance(instance)
                 except EC2ResponseError as inst:
                     if inst.error_code == "InvalidInstanceID.NotFound":
-                        self.logger.error(inst)
+                        self.logger.warn("LB with invalid instance: %s" + instance.id)
                         self.dettach_instance(instance)
 
 
