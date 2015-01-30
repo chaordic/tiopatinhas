@@ -152,11 +152,6 @@ class TPManager:
                 self.logger.debug(">> guess_target(): changed target from %s to %s" % (previous, candidate))
                 self.target = candidate
 
-
-
-    def get_target(self):
-        return self.target
-
     def managed_by_autoscale(self):
         return int(self.tapping_group.desired_capacity)
 
@@ -177,9 +172,6 @@ class TPManager:
 
     def ready_instances(self):
         return [x for x in self.bids if x.state == 'active']
-
-    def live_instances(self):
-        return self.live
 
     def buy(self, amount=1):
         tapping_group = self.tapping_group
@@ -288,7 +280,7 @@ class TPManager:
     def maybe_replace(self):
         for instance in self.emergency:
             self.logger.debug("self.proximity(instance): " + str(self.proximity(instance)))
-            if self.proximity(instance) < 10 and self.proximity(instance) > 2 and self.managed_instances() <= self.get_target():
+            if self.proximity(instance) < 10 and self.proximity(instance) > 2 and self.managed_instances() <= self.target:
                 self.logger.info(">> maybe_replace(): attempting to replace %s" % (instance.id))
                 self.bid(force=True)
 
@@ -326,7 +318,7 @@ class TPManager:
                     return True
             return False
 
-        if self.managed_instances() <= self.get_target():
+        if self.managed_instances() <= self.target:
             return False
 
         for bid in self.valid_bids():
@@ -408,13 +400,13 @@ class TPManager:
                     self.logger.info(">> load_state: Attaching new emergency instance %s to LB." % instance.id)
                     self.attach_instance(instance.id, "OD")
 
-    ''' Prepares this TPManager to stop by not launching new machines
-        and gradually remove old machines.
-        
-        This manager loop will only stop when both the autoscaling group
-        and the TP manager has zero instances running.
-    '''
     def stop(self):
+        ''' Prepares this TPManager to stop by not launching new machines
+            and gradually remove old machines.
+
+            This manager loop will only stop when both the autoscaling group
+            and the TP manager has zero instances running.
+        '''
         self.started = False
 
     def start(self):
@@ -424,10 +416,11 @@ class TPManager:
         self.logger.debug("*** Current state:")
         self.logger.debug("Managed by Autoscale: " + str(self.managed_by_autoscale()))
         self.logger.debug("Managed by TP: " + str(self.managed_instances()))
-        self.logger.debug("Target: " + str(self.get_target()))
-        self.logger.debug("Live: " +  ", ".join([x.instance_id for x in self.live_instances()]))
+        self.logger.debug("Target: " + str(self.target))
+        self.logger.debug("Live: " +  ", ".join([x.instance_id for x in self.live]))
         self.logger.debug("Emergency: " + ", ".join([x.id for x in self.emergency]))
- 
+        self.logger.debug("LB Unhealthy: " + ", ".join(self.unhealthy_ids))
+
     def run(self):
         self.start()
         self.previous_managed = 0
@@ -457,7 +450,8 @@ class TPManager:
         if self.emergency:
             self.maybe_replace()
 
-        if self.managed_instances() < self.get_target():
+        self.logger.debug("Checking if it needs to buy spot instances")
+        if self.managed_instances() < self.target:
             self.bid()
             self.load_state()
 
