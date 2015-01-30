@@ -351,9 +351,6 @@ class TPManager:
         return False
 
     def load_state(self):
-        self.bids = []
-        self.live = []
-        self.emergency = []
 
         lbnames = self.tapping_group.load_balancers
         reqs = self.ec2.get_all_spot_instance_requests()
@@ -376,6 +373,8 @@ class TPManager:
                         self.logger.warn("LB with invalid instance: %s" + instance.id)
                         self.dettach_instance(instance)
 
+        self.bids = []
+        self.live = []
 
 
         all_instances_infos = self.ec2.get_all_instances(instance_ids=running_in_lb)
@@ -391,6 +390,7 @@ class TPManager:
             else:
                 self.live.append(req)
 
+        self.emergency = []
         all_r = self.ec2.get_all_instances()
         for r in all_r:
             for instance in r.instances:
