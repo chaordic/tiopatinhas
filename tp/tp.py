@@ -3,7 +3,6 @@
 import boto
 from urllib import urlopen
 import time
-import datetime
 import cw
 import os
 import traceback
@@ -16,6 +15,7 @@ from boto.ec2 import autoscale
 from boto.ec2 import elb
 from boto.exception import EC2ResponseError
 from itertools import chain
+from datetime import datetime
 
 logging.basicConfig(format='%(asctime)s %(name)s %(levelname)s %(message)s')
 logger = logging.getLogger("main")
@@ -109,7 +109,8 @@ class TPManager:
         self.tapping_group = AutoScaleInfo(self.side_group, self.region)
         self.guess_target()
         if self.previous_as_count != self.managed_by_autoscale():
-            self.logger.info(">> refresh(): autoscale instance count changed from %s to %s" % (self.previous_as_count, self.managed_by_autoscale()))
+            self.logger.info(">> refresh(): autoscale instance count changed from %s to %s",
+                             self.previous_as_count, self.managed_by_autoscale())
             if self.previous_as_count != None:
                 self.last_change = time.time()
             self.previous_as_count = self.managed_by_autoscale()
@@ -194,11 +195,11 @@ class TPManager:
                     traceback.print_exc()
                     time.sleep(3)
 
-            self.attach_instance(instance, "OD")
-
     def bid(self, force=False):
-        if not force and time.time() - self.last_change < 600:
+        elapsed_time = time.time() - self.last_change
+        if not force and elapsed_time < 600:
             self.logger.info("bid(): last change was too recent, skipping bid")
+            self.logger.debug("bid(): remaining time to next change %s", 600 - elapsed_time)
             time.sleep(10)
             return
 
@@ -214,6 +215,7 @@ class TPManager:
                 user_data = self.user_data,
                 instance_type = self.spot_type,
                 monitoring_enabled = True)
+        # TODO really?
         while 1:
             try:
                 request[0].add_tag('tp:tag', self.side_group)
@@ -222,9 +224,8 @@ class TPManager:
                 traceback.print_exc()
                 time.sleep(3)
 
-        self.logger.info(">> bid(): created 1 bid of %s for %s" % (self.spot_type, self.max_price[self.spot_type]))
+        self.logger.info(">> bid(): created 1 bid of %s for %s", self.spot_type, self.max_price[self.spot_type])
         self.last_change = time.time()
-
         self.bids.append(request)
 
     def check_alive(self, spot_request):
@@ -279,9 +280,11 @@ class TPManager:
 
     def maybe_replace(self):
         for instance in self.emergency:
-            self.logger.debug("self.proximity(instance): " + str(self.proximity(instance)))
-            if self.proximity(instance) < 10 and self.proximity(instance) > 2 and self.managed_instances() <= self.target:
-                self.logger.info(">> maybe_replace(): attempting to replace %s" % (instance.id))
+            self.logger.debug("proximity(%s): %s", instance.id, str(self.proximity(instance)))
+            if (self.proximity(instance) < 10
+                    and self.proximity(instance) > 2
+                    and self.managed_instances() <= self.target):
+                self.logger.info(">> maybe_replace(): attempting to replace %s", instance.id)
                 self.bid(force=True)
 
             self.load_state()
@@ -294,7 +297,7 @@ class TPManager:
             instance = instance_or_spot
 
         minute = int(instance.launch_time.split(":")[1])
-        minute_now = datetime.datetime.now().minute
+        minute_now = datetime.now().minute
         o = minute - minute_now
         if o < -1:
             o = (minute + 60) - minute_now
@@ -442,11 +445,13 @@ class TPManager:
         self.refresh()
         self.print_state()
 
+        self.logger.debug("Checking if needs to launch emergency instances")
         if self.started and self.previous_managed > 0 and self.live_or_emergency() == 0:
-            self.logger.warn(">> market crashed! launching %s %s instances" % (self.previous_managed, self.emergency_type))
+            self.logger.warn(">> market crashed! launching %s %s instances", self.previous_managed, self.emergency_type)
             self.buy(self.previous_managed)
             self.load_state()
 
+        self.logger.debug("Checking if there's any emergency instance to replace")
         if self.emergency:
             self.maybe_replace()
 
@@ -455,6 +460,7 @@ class TPManager:
             self.bid()
             self.load_state()
 
+        self.logger.debug("Checking if there's any instance ready to be attached")
         for new in self.ready_instances():
             self.maybe_promote(new)
 
