@@ -15,6 +15,7 @@ from boto import ec2
 from boto.ec2 import autoscale
 from boto.ec2 import elb
 from boto.exception import EC2ResponseError
+from itertools import chain
 
 logging.basicConfig(format='%(asctime)s %(name)s %(levelname)s %(message)s')
 logger = logging.getLogger("main")
@@ -159,6 +160,12 @@ class TPManager:
     def managed_by_autoscale(self):
         return int(self.tapping_group.desired_capacity)
 
+    @property
+    def lbs(self):
+        lbnames = self.tapping_group.load_balancers
+        lbs = self.elb.get_all_load_balancers(load_balancer_names=lbnames)
+        return lbs
+
     def valid_bids(self):
         return [x for x in self.bids if x.state in ('active', 'open')]
 
@@ -259,14 +266,10 @@ class TPManager:
         for lb in lbs:
             lb.register_instances(instance_id)
 
-    def dettach_instance(self, instance_or_spot):
-        lbnames = self.tapping_group.load_balancers
-        lbs = self.elb.get_all_load_balancers(load_balancer_names=lbnames)
-
-        instance_id = getattr(instance_or_spot, 'instance_id', None) or instance_or_spot.id
-
-        for lb in lbs:
+    def dettach_instance(self, instance_id):
+        for lb in self.lbs:
             lb.deregister_instances(instance_id)
+
 
     def maybe_promote(self, spot_request):
         if spot_request.state != "active":
@@ -316,8 +319,8 @@ class TPManager:
         if self.emergency:
             for instance in self.emergency:
                 if self.proximity(instance) < 10 and self.proximity(instance) > 3 and not self.valid_bids():
-                    self.logger.info(">> maybe_demote(): removing emergency instance %s" % (instance.id))
-                    self.dettach_instance(instance)
+                    self.logger.info(">> maybe_demote(): removing emergency instance %s", instance.id)
+                    self.dettach_instance(instance.id)
                     self.ec2.terminate_instances([instance.id])
                     self.emergency.remove(instance)
                     return True
@@ -336,8 +339,8 @@ class TPManager:
         self.live.sort(key=self.proximity)
 
         if self.proximity(self.live[0]) < 3 or not self.started:
-            self.logger.info(">> demote(): %s is live, removing" % self.live[0])
-            self.dettach_instance(self.live[0])
+            self.logger.info(">> demote(): %s is live, removing", self.live[0])
+            self.dettach_instance(self.live[0].instance_id)
             self.last_change = time.time()
             time.sleep(5)
             self.live[0].cancel()
@@ -351,52 +354,59 @@ class TPManager:
         return False
 
     def load_state(self):
+        # TODO move it from here to somewhere else
+        def is_ec2_state_running(instance_id):
+            ec2_state = lambda instance_id: self.ec2.get_all_instance_status(instance_ids=[instance_id])
+            try:
+                instance = ec2_state(instance_id)
+                return len(instance) > 0 and instance[0].state_name not in ('terminated', 'shutting-down')
+            except EC2ResponseError as inst:
+                if inst.error_code == "InvalidInstanceID.NotFound":
+                    self.logger.warn("LB with invalid instance: %s", instance.id)
+                    return False
+                else:
+                    raise inst
 
-        lbnames = self.tapping_group.load_balancers
-        reqs = self.ec2.get_all_spot_instance_requests()
-
-        lbs = self.elb.get_all_load_balancers(load_balancer_names=lbnames)
         running_in_lb = []
+        self.unhealthy_ids = set()
 
-        for lb in lbs:
-            for instance in lb.instances:
-                try:
-                    # Some times some dead instances get stuck on LB and boto lib doesn't know how to treat it
-                    # This make sure that instance is alive and avoid bug on get_all_instances method
-                    instance_status = self.ec2.get_all_instance_status(instance_ids=[instance.id])
-                    if len(instance_status) > 0 and instance_status[0].state_name == u'running':
-                        running_in_lb.append(instance.id)
-                    else:
-                        self.dettach_instance(instance)
-                except EC2ResponseError as inst:
-                    if inst.error_code == "InvalidInstanceID.NotFound":
-                        self.logger.warn("LB with invalid instance: %s" + instance.id)
-                        self.dettach_instance(instance)
+        for lb in self.lbs:
+            for instance_state in lb.get_instance_health():
+                if instance_state.state != 'InService':
+                    self.unhealthy_ids.add(instance_state.instance_id)
+                # Some times some dead instances get stuck on LB and boto lib doesn't know how to treat it
+                # This make sure that instance is alive and avoid bug on get_all_instances method
+                elif is_ec2_state_running(instance_state.instance_id):
+                    running_in_lb.append(instance_state.instance_id)
+                else:
+                    self.dettach_instance(instance_state.instance_id)
 
+        spot_requests = self.ec2.get_all_spot_instance_requests()
         self.bids = []
         self.live = []
 
-
-        all_instances_infos = self.ec2.get_all_instances(instance_ids=running_in_lb)
-        all_instances_ids = [x.instances[0].id for x in all_instances_infos if x.instances[0].state not in ('terminated', 'shutting-down')]
-
-        for req in reqs:
-            tp_tag = req.tags.get('tp:tag', None)
+        for request in spot_requests:
+            tp_tag = request.tags.get('tp:tag', None)
             if not tp_tag or tp_tag != self.side_group:
                 continue
 
-            if not req.instance_id in running_in_lb:
-                self.bids.append(req)
+            if request.instance_id not in running_in_lb:
+                self.bids.append(request)
             else:
-                self.live.append(req)
+                self.live.append(request)
 
         self.emergency = []
-        all_r = self.ec2.get_all_instances()
-        for r in all_r:
-            for instance in r.instances:
-                if instance.tags.get('tp:group', None) == self.tapping_group.name and instance.state not in ('terminated', 'shutting-down'):
-                    self.emergency.append(instance)
-                    self.attach_instance(instance, "OD")
+
+        # gets a list of instances and flat the items from all element.instances
+        all_instances = [r.instances for r in self.ec2.get_all_instances()]
+        instances = chain.from_iterable(all_instances)
+        for instance in instances:
+            if (instance.tags.get('tp:group', None) == self.tapping_group.name and
+                    instance.state not in ('terminated', 'shutting-down')):
+                self.emergency.append(instance)
+                if instance.id not in running_in_lb:
+                    self.logger.info(">> load_state: Attaching new emergency instance %s to LB." % instance.id)
+                    self.attach_instance(instance.id, "OD")
 
     ''' Prepares this TPManager to stop by not launching new machines
         and gradually remove old machines.
