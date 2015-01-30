@@ -426,8 +426,9 @@ class TPManager:
             try:
                 self.save_money()
             except Exception, e:
-                logger.error(e)
- 
+                logger.exception(e)
+                time.sleep(10) # protect if Amazon f...ails us
+
             flush_output()
             time.sleep(20)
         self.logger.debug("Stopped running.")
