@@ -56,7 +56,7 @@ class AutoScaleInfo:
 class TPManager:
     def __init__(self, side_group, weight_factor=1.0, debug=False,
                  region=None, user_data=None, conf_file="tp.conf", az=None,
-                 grace_period_minutes=10):
+                 spot_type=None, grace_period_minutes=10):
         self.logger = logging.getLogger(side_group)
         if debug:
             self.logger.setLevel(logging.DEBUG)
@@ -73,7 +73,7 @@ class TPManager:
 
         self.grace_period_minutes = grace_period_minutes
         self.max_price = self.conf.get("max_price", {"c1.xlarge": "0.750"})
-        self.spot_type = self.conf.get("spot_type", "c1.xlarge")
+        self.spot_type = spot_type or self.conf.get("spot_type", "c1.xlarge")
         self.emergency_type = self.conf.get("emergency_type", "c1.xlarge")
         self.weight_factor = weight_factor
         self.tags = self.conf.get("tags", {})
@@ -105,7 +105,8 @@ class TPManager:
                 with open(user_data_file) as f:
                     self.user_data = f.read()
             except IOError:
-                self.logger.warn("Could not read user data file: %s. Will launch instances without user data." % (user_data_file))
+                self.logger.warn("Could not read user data file: %s. Will launch instances without user data.",
+                                 user_data_file)
 
     def refresh(self):
         self.tapping_group = AutoScaleInfo(self.side_group, self.region)
@@ -314,7 +315,7 @@ class TPManager:
 
         for bid in self.valid_bids():
             if bid.state == "open":
-                self.logger.info(">> demote(): %s is open, removing" % bid)
+                self.logger.info(">> demote(): %s is open, removing", bid)
                 bid.cancel()
                 self.bids.remove(bid)
                 return True
@@ -329,10 +330,10 @@ class TPManager:
             self.live[0].cancel()
             self.ec2.terminate_instances([self.live[0].instance_id])
             time.sleep(1)
-            self.live = self.live[1:]
+            self.live.remove(self.live[0])
             return True
         else:
-            self.logger.info(">> demotion too far off, postponing (%s minutes)" % (self.proximity(self.live[0])))
+            self.logger.info(">> demotion too far off, postponing (%s minutes)", self.proximity(self.live[0]))
 
         return False
 
@@ -421,7 +422,7 @@ class TPManager:
                 self.save_money()
             except Exception, e:
                 logger.exception(e)
-                time.sleep(10) # protect if Amazon f...ails us
+                time.sleep(10)
 
             flush_output()
             time.sleep(20)
