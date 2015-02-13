@@ -213,23 +213,10 @@ class TPManager:
         self.last_change = time.time()
         self.bids.append(request)
 
-    def check_alive(self, spot_request):
-        all_instances = self.ec2.get_all_instances()
-        for instance in all_instances:
-            inst = instance.instances[0]
-
-            if inst.id == spot_request.instance_id and inst.state == "running":
-                try:
-                    health_check_url = "https://%s/%s" % (inst.dns_name, self.conf.get("health_check_path", "")) 
-                    webob = urlopen(health_check_url)
-                    response = webob.getcode()
-                    self.logger.debug("Checking instance %s health on url %s. Response: %d" % (inst.id, health_check_url, response))
-                    if response == 200:
-                        return True
-                    return False
-                except:
-                    return False
-        return False
+    def check_alive(self, instance_id):
+        all_instances = self.ec2.get_all_instances(instance_ids=[instance_id])
+        inst = all_instances.pop().instances[0]
+        return inst.state == "running"
 
     def attach_instance(self, instance_or_spot, infix):
         lbnames = self.tapping_group.load_balancers
@@ -250,12 +237,8 @@ class TPManager:
 
 
     def maybe_promote(self, spot_request):
-        if spot_request.state != "active":
-            self.logger.info(">> maybe_promote(): %s not active?" % spot_request)
-            return
-
-        if self.check_alive(spot_request):
-            self.logger.info(">> maybe_promote(): %s is alive, promoting" % spot_request)
+        if self.check_alive(spot_request.instance_id):
+            self.logger.info(">> maybe_promote(): %s is alive, promoting", spot_request)
 
             self.attach_instance(spot_request, "TP")
             self.bids.remove(spot_request)
