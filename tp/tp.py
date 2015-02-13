@@ -182,9 +182,9 @@ class TPManager:
 
     def bid(self, force=False):
         elapsed_time = time.time() - self.last_change
-        if not force and elapsed_time < 600:
+        if not force and elapsed_time < 300:
             self.logger.info("bid(): last change was too recent, skipping bid")
-            self.logger.debug("bid(): remaining time to next change %s", 600 - elapsed_time)
+            self.logger.debug("bid(): remaining time to next change %s", 300 - elapsed_time)
             time.sleep(10)
             return
 
