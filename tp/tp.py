@@ -218,17 +218,12 @@ class TPManager:
         inst = all_instances.pop().instances[0]
         return inst.state == "running"
 
-    def attach_instance(self, instance_or_spot, infix):
-        lbnames = self.tapping_group.load_balancers
-        lbs = self.elb.get_all_load_balancers(load_balancer_names=lbnames)
-
-        instance_id = getattr(instance_or_spot, 'instance_id', None) or instance_or_spot.id
-
+    def attach_instance(self, instance_id, infix):
         tags = self.tags.copy()
         tags['Name'] = "%s %s %s" % (self.conf.get("instance_name", "instance"), infix, self.side_group)
         self.ec2.create_tags([instance_id], tags)
 
-        for lb in lbs:
+        for lb in self.lbs:
             lb.register_instances(instance_id)
 
     def dettach_instance(self, instance_id):
@@ -240,11 +235,11 @@ class TPManager:
         if self.check_alive(spot_request.instance_id):
             self.logger.info(">> maybe_promote(): %s is alive, promoting", spot_request)
 
-            self.attach_instance(spot_request, "TP")
+            self.attach_instance(spot_request.instance_id, "TP")
             self.bids.remove(spot_request)
             self.live.append(spot_request)
             self.last_change = time.time()
-            self.logger.info(">> maybe_promote(): %s promoted, now live" % spot_request)
+            self.logger.info(">> maybe_promote(): %s promoted, now live", spot_request)
 
     def maybe_replace(self):
         for instance in self.emergency:
