@@ -3,7 +3,6 @@
 import boto
 from urllib import urlopen
 import time
-import cw
 import os
 import traceback
 import logging
@@ -54,7 +53,7 @@ class AutoScaleInfo:
 
 
 class TPManager:
-    def __init__(self, side_group, debug=False, region=None, user_data=None, conf_file="tp.conf", az=None):
+    def __init__(self, side_group, weight_factor=1.0, debug=False, region=None, user_data=None, conf_file="tp.conf", az=None):
         self.logger = logging.getLogger(side_group)
         if debug:
             self.logger.setLevel(logging.DEBUG)
@@ -72,6 +71,7 @@ class TPManager:
         self.max_price = self.conf.get("max_price", {"c1.xlarge": "0.750"})
         self.spot_type = self.conf.get("spot_type", "c1.xlarge")
         self.emergency_type = self.conf.get("emergency_type", "c1.xlarge")
+        self.weight_factor = weight_factor
         self.tags = self.conf.get("tags", {})
         self.region = region or self.conf.get("region", "us-east-1") #parameter has precedence over config file
 
@@ -93,8 +93,6 @@ class TPManager:
 
         self.ec2 = boto.ec2.connect_to_region(self.region)
         self.elb = boto.ec2.elb.connect_to_region(self.region)
-
-        self.guesser = cw.CPUTendenceGuesser(self.tapping_group.name, self.conf.get("lower_cpu", 30), self.conf.get("upper_cpu", 50), self.conf.get("lower_threshold", 2), self.conf.get("upper_threshold", 2))
 
         self.user_data = user_data
         user_data_file = self.conf.get("user_data_file", None)
@@ -126,31 +124,18 @@ class TPManager:
 
         # How many instances we should keep running
         if time.time() - self.last_change > 360:
-            candidate = self.managed_instances()
-            bias = self.guesser.guess()
-            self.logger.debug("Bias: " + str(bias))
-
-            if len(self.live) == candidate:
-                candidate += bias
-
-            # At most one more than autoscale or one less
-            if candidate - self.tapping_group.desired_capacity > 1:
-                candidate = self.tapping_group.desired_capacity + 1
-            elif candidate - self.tapping_group.desired_capacity < -1:
-                candidate = self.tapping_group.desired_capacity - 1
+            candidate = round(self.weight_factor * self.tapping_group.desired_capacity)
 
             # Never less than one
             if candidate < 1:
                 candidate = 1
 
             max_candidates = self.conf.get("max_candidates", 6)
-            if candidate > max_candidates:
-                candidate = max_candidates
-
-            self.logger.debug("Current candidate for target instances: " + str(candidate))
+            candidate = min(candidate, max_candidates)
+            self.logger.debug("Current candidate for target instances: %s", str(candidate))
 
             if candidate != previous:
-                self.logger.debug(">> guess_target(): changed target from %s to %s" % (previous, candidate))
+                self.logger.debug(">> guess_target(): changed target from %s to %s", previous, candidate)
                 self.target = candidate
 
     def managed_by_autoscale(self):
