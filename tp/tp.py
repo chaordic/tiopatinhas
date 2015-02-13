@@ -14,6 +14,7 @@ from boto.ec2 import autoscale
 from boto.ec2 import elb
 from boto.exception import EC2ResponseError
 from itertools import chain
+from datetime import timedelta
 from datetime import datetime
 
 logging.basicConfig(format='%(asctime)s %(name)s %(levelname)s %(message)s')
@@ -53,7 +54,9 @@ class AutoScaleInfo:
 
 
 class TPManager:
-    def __init__(self, side_group, weight_factor=1.0, debug=False, region=None, user_data=None, conf_file="tp.conf", az=None):
+    def __init__(self, side_group, weight_factor=1.0, debug=False,
+                 region=None, user_data=None, conf_file="tp.conf", az=None,
+                 grace_period_minutes=10):
         self.logger = logging.getLogger(side_group)
         if debug:
             self.logger.setLevel(logging.DEBUG)
@@ -68,6 +71,7 @@ class TPManager:
             self.logger.error("Configuration file " + conf_file + " not found.")
             sys.exit(2)
 
+        self.grace_period_minutes = grace_period_minutes
         self.max_price = self.conf.get("max_price", {"c1.xlarge": "0.750"})
         self.spot_type = self.conf.get("spot_type", "c1.xlarge")
         self.emergency_type = self.conf.get("emergency_type", "c1.xlarge")
@@ -230,6 +234,27 @@ class TPManager:
         for lb in self.lbs:
             lb.deregister_instances(instance_id)
 
+    def maybe_terminate(self, instance_id):
+        # only if it's a spot or emergency machine, otherwise AS will take care of it
+        live_spot_dict = dict([(x.instance_id, x) for x in self.live])
+        live_emergency_ids = [x.id for x in self.emergency]
+
+        if instance_id in live_spot_dict or instance_id in live_emergency_ids:
+            # check grace period
+            grace_period_delta = timedelta(minutes=self.grace_period_minutes)
+
+            instance_info = self.ec2.get_all_instances(instance_ids=[instance_id])[0].instances[0]
+            uptime = datetime.utcnow() - datetime.strptime(instance_info.launch_time, '%Y-%m-%dT%H:%M:%S.%fZ')
+            if uptime > grace_period_delta:
+                self.logger.info(">> maybe_terminate(): %s is unhealthy_ids for longer than %s minutes - killing it!",
+                                 instance_id, self.grace_period_minutes)
+                self.dettach_instance(instance_id)
+                self.ec2.terminate_instances([instance_id])
+
+                if instance_id in live_spot_dict:
+                    instance = live_spot_dict[instance_id]
+                    instance.cancel()  # cancel the spot request
+                    self.live.remove(instance)
 
     def maybe_promote(self, spot_request):
         if self.check_alive(spot_request.instance_id):
@@ -426,6 +451,10 @@ class TPManager:
         self.logger.debug("Checking if there's any instance ready to be attached")
         for new in self.ready_instances():
             self.maybe_promote(new)
+
+        self.logger.debug("Checking if there's any sick machine to terminate")
+        for sick in self.unhealthy_ids:
+            self.maybe_terminate(sick)
 
         self.maybe_demote()
         self.previous_managed = self.live_or_emergency()
