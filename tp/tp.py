@@ -3,8 +3,6 @@
 import boto
 from urllib import urlopen
 import time
-import datetime
-import cw
 import os
 import traceback
 import logging
@@ -15,6 +13,9 @@ from boto import ec2
 from boto.ec2 import autoscale
 from boto.ec2 import elb
 from boto.exception import EC2ResponseError
+from itertools import chain
+from datetime import timedelta
+from datetime import datetime
 
 logging.basicConfig(format='%(asctime)s %(name)s %(levelname)s %(message)s')
 logger = logging.getLogger("main")
@@ -53,7 +54,9 @@ class AutoScaleInfo:
 
 
 class TPManager:
-    def __init__(self, side_group, debug=False, region=None, user_data=None, conf_file="tp.conf", az=None):
+    def __init__(self, side_group, weight_factor=1.0, debug=False,
+                 region=None, user_data=None, conf_file="tp.conf", az=None,
+                 spot_type=None, grace_period_minutes=10):
         self.logger = logging.getLogger(side_group)
         if debug:
             self.logger.setLevel(logging.DEBUG)
@@ -68,9 +71,11 @@ class TPManager:
             self.logger.error("Configuration file " + conf_file + " not found.")
             sys.exit(2)
 
+        self.grace_period_minutes = grace_period_minutes
         self.max_price = self.conf.get("max_price", {"c1.xlarge": "0.750"})
-        self.spot_type = self.conf.get("spot_type", "c1.xlarge")
+        self.spot_type = spot_type or self.conf.get("spot_type", "c1.xlarge")
         self.emergency_type = self.conf.get("emergency_type", "c1.xlarge")
+        self.weight_factor = weight_factor
         self.tags = self.conf.get("tags", {})
         self.region = region or self.conf.get("region", "us-east-1") #parameter has precedence over config file
 
@@ -93,8 +98,6 @@ class TPManager:
         self.ec2 = boto.ec2.connect_to_region(self.region)
         self.elb = boto.ec2.elb.connect_to_region(self.region)
 
-        self.guesser = cw.CPUTendenceGuesser(self.tapping_group.name, self.conf.get("lower_cpu", 30), self.conf.get("upper_cpu", 50), self.conf.get("lower_threshold", 2), self.conf.get("upper_threshold", 2))
-
         self.user_data = user_data
         user_data_file = self.conf.get("user_data_file", None)
         if not user_data and user_data_file:
@@ -102,13 +105,15 @@ class TPManager:
                 with open(user_data_file) as f:
                     self.user_data = f.read()
             except IOError:
-                self.logger.warn("Could not read user data file: %s. Will launch instances without user data." % (user_data_file))
+                self.logger.warn("Could not read user data file: %s. Will launch instances without user data.",
+                                 user_data_file)
 
     def refresh(self):
         self.tapping_group = AutoScaleInfo(self.side_group, self.region)
         self.guess_target()
         if self.previous_as_count != self.managed_by_autoscale():
-            self.logger.info(">> refresh(): autoscale instance count changed from %s to %s" % (self.previous_as_count, self.managed_by_autoscale()))
+            self.logger.info(">> refresh(): autoscale instance count changed from %s to %s",
+                             self.previous_as_count, self.managed_by_autoscale())
             if self.previous_as_count != None:
                 self.last_change = time.time()
             self.previous_as_count = self.managed_by_autoscale()
@@ -124,40 +129,28 @@ class TPManager:
 
         # How many instances we should keep running
         if time.time() - self.last_change > 360:
-            candidate = self.managed_instances()
-            bias = self.guesser.guess()
-            self.logger.debug("Bias: " + str(bias))
-
-            if len(self.live) == candidate:
-                candidate += bias
-
-            # At most one more than autoscale or one less
-            if candidate - self.tapping_group.desired_capacity > 1:
-                candidate = self.tapping_group.desired_capacity + 1
-            elif candidate - self.tapping_group.desired_capacity < -1:
-                candidate = self.tapping_group.desired_capacity - 1
+            candidate = round(self.weight_factor * self.tapping_group.desired_capacity)
 
             # Never less than one
             if candidate < 1:
                 candidate = 1
 
             max_candidates = self.conf.get("max_candidates", 6)
-            if candidate > max_candidates:
-                candidate = max_candidates
-
-            self.logger.debug("Current candidate for target instances: " + str(candidate))
+            candidate = min(candidate, max_candidates)
+            self.logger.debug("Current candidate for target instances: %s", str(candidate))
 
             if candidate != previous:
-                self.logger.debug(">> guess_target(): changed target from %s to %s" % (previous, candidate))
+                self.logger.debug(">> guess_target(): changed target from %s to %s", previous, candidate)
                 self.target = candidate
-
-
-
-    def get_target(self):
-        return self.target
 
     def managed_by_autoscale(self):
         return int(self.tapping_group.desired_capacity)
+
+    @property
+    def lbs(self):
+        lbnames = self.tapping_group.load_balancers
+        lbs = self.elb.get_all_load_balancers(load_balancer_names=lbnames)
+        return lbs
 
     def valid_bids(self):
         return [x for x in self.bids if x.state in ('active', 'open')]
@@ -170,9 +163,6 @@ class TPManager:
 
     def ready_instances(self):
         return [x for x in self.bids if x.state == 'active']
-
-    def live_instances(self):
-        return self.live
 
     def buy(self, amount=1):
         tapping_group = self.tapping_group
@@ -195,11 +185,11 @@ class TPManager:
                     traceback.print_exc()
                     time.sleep(3)
 
-            self.attach_instance(instance, "OD")
-
     def bid(self, force=False):
-        if not force and time.time() - self.last_change < 600:
+        elapsed_time = time.time() - self.last_change
+        if not force and elapsed_time < 300:
             self.logger.info("bid(): last change was too recent, skipping bid")
+            self.logger.debug("bid(): remaining time to next change %s", 300 - elapsed_time)
             time.sleep(10)
             return
 
@@ -215,6 +205,7 @@ class TPManager:
                 user_data = self.user_data,
                 instance_type = self.spot_type,
                 monitoring_enabled = True)
+        # TODO really?
         while 1:
             try:
                 request[0].add_tag('tp:tag', self.side_group)
@@ -223,70 +214,66 @@ class TPManager:
                 traceback.print_exc()
                 time.sleep(3)
 
-        self.logger.info(">> bid(): created 1 bid of %s for %s" % (self.spot_type, self.max_price[self.spot_type]))
+        self.logger.info(">> bid(): created 1 bid of %s for %s", self.spot_type, self.max_price[self.spot_type])
         self.last_change = time.time()
-
         self.bids.append(request)
 
-    def check_alive(self, spot_request):
-        all_instances = self.ec2.get_all_instances()
-        for instance in all_instances:
-            inst = instance.instances[0]
+    def check_alive(self, instance_id):
+        all_instances = self.ec2.get_all_instances(instance_ids=[instance_id])
+        inst = all_instances.pop().instances[0]
+        return inst.state == "running"
 
-            if inst.id == spot_request.instance_id and inst.state == "running":
-                try:
-                    health_check_url = "https://%s/%s" % (inst.dns_name, self.conf.get("health_check_path", "")) 
-                    webob = urlopen(health_check_url)
-                    response = webob.getcode()
-                    self.logger.debug("Checking instance %s health on url %s. Response: %d" % (inst.id, health_check_url, response))
-                    if response == 200:
-                        return True
-                    return False
-                except:
-                    return False
-        return False
-
-    def attach_instance(self, instance_or_spot, infix):
-        lbnames = self.tapping_group.load_balancers
-        lbs = self.elb.get_all_load_balancers(load_balancer_names=lbnames)
-
-        instance_id = getattr(instance_or_spot, 'instance_id', None) or instance_or_spot.id
-
+    def attach_instance(self, instance_id, infix):
         tags = self.tags.copy()
         tags['Name'] = "%s %s %s" % (self.conf.get("instance_name", "instance"), infix, self.side_group)
         self.ec2.create_tags([instance_id], tags)
 
-        for lb in lbs:
+        for lb in self.lbs:
             lb.register_instances(instance_id)
 
-    def dettach_instance(self, instance_or_spot):
-        lbnames = self.tapping_group.load_balancers
-        lbs = self.elb.get_all_load_balancers(load_balancer_names=lbnames)
-
-        instance_id = getattr(instance_or_spot, 'instance_id', None) or instance_or_spot.id
-
-        for lb in lbs:
+    def dettach_instance(self, instance_id):
+        for lb in self.lbs:
             lb.deregister_instances(instance_id)
 
+    def maybe_terminate(self, instance_id):
+        # only if it's a spot or emergency machine, otherwise AS will take care of it
+        live_spot_dict = dict([(x.instance_id, x) for x in self.live])
+        live_emergency_ids = [x.id for x in self.emergency]
+
+        if instance_id in live_spot_dict or instance_id in live_emergency_ids:
+            # check grace period
+            grace_period_delta = timedelta(minutes=self.grace_period_minutes)
+
+            instance_info = self.ec2.get_all_instances(instance_ids=[instance_id])[0].instances[0]
+            uptime = datetime.utcnow() - datetime.strptime(instance_info.launch_time, '%Y-%m-%dT%H:%M:%S.%fZ')
+            if uptime > grace_period_delta:
+                self.logger.info(">> maybe_terminate(): %s is unhealthy_ids for longer than %s minutes - killing it!",
+                                 instance_id, self.grace_period_minutes)
+                self.dettach_instance(instance_id)
+                self.ec2.terminate_instances([instance_id])
+
+                if instance_id in live_spot_dict:
+                    instance = live_spot_dict[instance_id]
+                    instance.cancel()  # cancel the spot request
+                    self.live.remove(instance)
+
     def maybe_promote(self, spot_request):
-        if spot_request.state != "active":
-            self.logger.info(">> maybe_promote(): %s not active?" % spot_request)
-            return
+        if self.check_alive(spot_request.instance_id):
+            self.logger.info(">> maybe_promote(): %s is alive, promoting", spot_request)
 
-        if self.check_alive(spot_request):
-            self.logger.info(">> maybe_promote(): %s is alive, promoting" % spot_request)
-
-            self.attach_instance(spot_request, "TP")
+            self.attach_instance(spot_request.instance_id, "TP")
             self.bids.remove(spot_request)
             self.live.append(spot_request)
             self.last_change = time.time()
-            self.logger.info(">> maybe_promote(): %s promoted, now live" % spot_request)
+            self.logger.info(">> maybe_promote(): %s promoted, now live", spot_request)
 
     def maybe_replace(self):
         for instance in self.emergency:
-            self.logger.debug("self.proximity(instance): " + str(self.proximity(instance)))
-            if self.proximity(instance) < 10 and self.proximity(instance) > 2 and self.managed_instances() <= self.get_target():
-                self.logger.info(">> maybe_replace(): attempting to replace %s" % (instance.id))
+            self.logger.debug("proximity(%s): %s", instance.id, str(self.proximity(instance)))
+            if (self.proximity(instance) < 10
+                    and self.proximity(instance) > 2
+                    and self.managed_instances() <= self.target):
+                self.logger.info(">> maybe_replace(): attempting to replace %s", instance.id)
                 self.bid(force=True)
 
             self.load_state()
@@ -299,7 +286,7 @@ class TPManager:
             instance = instance_or_spot
 
         minute = int(instance.launch_time.split(":")[1])
-        minute_now = datetime.datetime.now().minute
+        minute_now = datetime.now().minute
         o = minute - minute_now
         if o < -1:
             o = (minute + 60) - minute_now
@@ -316,19 +303,19 @@ class TPManager:
         if self.emergency:
             for instance in self.emergency:
                 if self.proximity(instance) < 10 and self.proximity(instance) > 3 and not self.valid_bids():
-                    self.logger.info(">> maybe_demote(): removing emergency instance %s" % (instance.id))
-                    self.dettach_instance(instance)
+                    self.logger.info(">> maybe_demote(): removing emergency instance %s", instance.id)
+                    self.dettach_instance(instance.id)
                     self.ec2.terminate_instances([instance.id])
                     self.emergency.remove(instance)
                     return True
             return False
 
-        if self.managed_instances() <= self.get_target():
+        if self.managed_instances() <= self.target:
             return False
 
         for bid in self.valid_bids():
             if bid.state == "open":
-                self.logger.info(">> demote(): %s is open, removing" % bid)
+                self.logger.info(">> demote(): %s is open, removing", bid)
                 bid.cancel()
                 self.bids.remove(bid)
                 return True
@@ -336,75 +323,82 @@ class TPManager:
         self.live.sort(key=self.proximity)
 
         if self.proximity(self.live[0]) < 3 or not self.started:
-            self.logger.info(">> demote(): %s is live, removing" % self.live[0])
-            self.dettach_instance(self.live[0])
+            self.logger.info(">> demote(): %s is live, removing", self.live[0])
+            self.dettach_instance(self.live[0].instance_id)
             self.last_change = time.time()
             time.sleep(5)
             self.live[0].cancel()
             self.ec2.terminate_instances([self.live[0].instance_id])
             time.sleep(1)
-            self.live = self.live[1:]
+            self.live.remove(self.live[0])
             return True
         else:
-            self.logger.info(">> demotion too far off, postponing (%s minutes)" % (self.proximity(self.live[0])))
+            self.logger.info(">> demotion too far off, postponing (%s minutes)", self.proximity(self.live[0]))
 
         return False
 
     def load_state(self):
+        # TODO move it from here to somewhere else
+        def is_ec2_state_running(instance_id):
+            ec2_state = lambda instance_id: self.ec2.get_all_instance_status(instance_ids=[instance_id])
+            try:
+                instance = ec2_state(instance_id)
+                return len(instance) > 0 and instance[0].state_name not in ('terminated', 'shutting-down')
+            except EC2ResponseError as inst:
+                if inst.error_code == "InvalidInstanceID.NotFound":
+                    self.logger.warn("LB with invalid instance: %s", instance.id)
+                    return False
+                else:
+                    raise inst
+
+        running_in_lb = []
+        self.unhealthy_ids = set()
+
+        for lb in self.lbs:
+            for instance_state in lb.get_instance_health():
+                if instance_state.state != 'InService':
+                    self.unhealthy_ids.add(instance_state.instance_id)
+                # Some times some dead instances get stuck on LB and boto lib doesn't know how to treat it
+                # This make sure that instance is alive and avoid bug on get_all_instances method
+                elif is_ec2_state_running(instance_state.instance_id):
+                    running_in_lb.append(instance_state.instance_id)
+                else:
+                    self.dettach_instance(instance_state.instance_id)
+
+        spot_requests = self.ec2.get_all_spot_instance_requests()
         self.bids = []
         self.live = []
-        self.emergency = []
 
-        lbnames = self.tapping_group.load_balancers
-        reqs = self.ec2.get_all_spot_instance_requests()
-
-        lbs = self.elb.get_all_load_balancers(load_balancer_names=lbnames)
-        running_in_lb = []
-
-        for lb in lbs:
-            for instance in lb.instances:
-                try:
-                    # Some times some dead instances get stuck on LB and boto lib doesn't know how to treat it
-                    # This make sure that instance is alive and avoid bug on get_all_instances method
-                    instance_status = self.ec2.get_all_instance_status(instance_ids=[instance.id])
-                    if len(instance_status) > 0 and instance_status[0].state_name == u'running':
-                        running_in_lb.append(instance.id)
-                    else:
-                        self.dettach_instance(instance)
-                except EC2ResponseError as inst:
-                    if inst.error_code == "InvalidInstanceID.NotFound":
-                        self.logger.warn("LB with invalid instance: %s" + instance.id)
-                        self.dettach_instance(instance)
-
-
-
-        all_instances_infos = self.ec2.get_all_instances(instance_ids=running_in_lb)
-        all_instances_ids = [x.instances[0].id for x in all_instances_infos if x.instances[0].state not in ('terminated', 'shutting-down')]
-
-        for req in reqs:
-            tp_tag = req.tags.get('tp:tag', None)
+        for request in spot_requests:
+            tp_tag = request.tags.get('tp:tag', None)
             if not tp_tag or tp_tag != self.side_group:
                 continue
 
-            if not req.instance_id in running_in_lb:
-                self.bids.append(req)
+            if request.instance_id not in running_in_lb:
+                self.bids.append(request)
             else:
-                self.live.append(req)
+                self.live.append(request)
 
-        all_r = self.ec2.get_all_instances()
-        for r in all_r:
-            for instance in r.instances:
-                if instance.tags.get('tp:group', None) == self.tapping_group.name and instance.state not in ('terminated', 'shutting-down'):
-                    self.emergency.append(instance)
-                    self.attach_instance(instance, "OD")
+        self.emergency = []
 
-    ''' Prepares this TPManager to stop by not launching new machines
-        and gradually remove old machines.
-        
-        This manager loop will only stop when both the autoscaling group
-        and the TP manager has zero instances running.
-    '''
+        # gets a list of instances and flat the items from all element.instances
+        all_instances = [r.instances for r in self.ec2.get_all_instances()]
+        instances = chain.from_iterable(all_instances)
+        for instance in instances:
+            if (instance.tags.get('tp:group', None) == self.tapping_group.name and
+                    instance.state not in ('terminated', 'shutting-down')):
+                self.emergency.append(instance)
+                if instance.id not in running_in_lb:
+                    self.logger.info(">> load_state: Attaching new emergency instance %s to LB." % instance.id)
+                    self.attach_instance(instance.id, "OD")
+
     def stop(self):
+        ''' Prepares this TPManager to stop by not launching new machines
+            and gradually remove old machines.
+
+            This manager loop will only stop when both the autoscaling group
+            and the TP manager has zero instances running.
+        '''
         self.started = False
 
     def start(self):
@@ -414,10 +408,11 @@ class TPManager:
         self.logger.debug("*** Current state:")
         self.logger.debug("Managed by Autoscale: " + str(self.managed_by_autoscale()))
         self.logger.debug("Managed by TP: " + str(self.managed_instances()))
-        self.logger.debug("Target: " + str(self.get_target()))
-        self.logger.debug("Live: " +  ", ".join([x.instance_id for x in self.live_instances()]))
+        self.logger.debug("Target: " + str(self.target))
+        self.logger.debug("Live: " +  ", ".join([x.instance_id for x in self.live]))
         self.logger.debug("Emergency: " + ", ".join([x.id for x in self.emergency]))
- 
+        self.logger.debug("LB Unhealthy: " + ", ".join(self.unhealthy_ids))
+
     def run(self):
         self.start()
         self.previous_managed = 0
@@ -426,8 +421,9 @@ class TPManager:
             try:
                 self.save_money()
             except Exception, e:
-                logger.error(e)
- 
+                logger.exception(e)
+                time.sleep(10)
+
             flush_output()
             time.sleep(20)
         self.logger.debug("Stopped running.")
@@ -438,20 +434,28 @@ class TPManager:
         self.refresh()
         self.print_state()
 
+        self.logger.debug("Checking if needs to launch emergency instances")
         if self.started and self.previous_managed > 0 and self.live_or_emergency() == 0:
-            self.logger.warn(">> market crashed! launching %s %s instances" % (self.previous_managed, self.emergency_type))
+            self.logger.warn(">> market crashed! launching %s %s instances", self.previous_managed, self.emergency_type)
             self.buy(self.previous_managed)
             self.load_state()
 
+        self.logger.debug("Checking if there's any emergency instance to replace")
         if self.emergency:
             self.maybe_replace()
 
-        if self.managed_instances() < self.get_target():
+        self.logger.debug("Checking if it needs to buy spot instances")
+        if self.managed_instances() < self.target:
             self.bid()
             self.load_state()
 
+        self.logger.debug("Checking if there's any instance ready to be attached")
         for new in self.ready_instances():
             self.maybe_promote(new)
+
+        self.logger.debug("Checking if there's any sick machine to terminate")
+        for sick in self.unhealthy_ids:
+            self.maybe_terminate(sick)
 
         self.maybe_demote()
         self.previous_managed = self.live_or_emergency()
