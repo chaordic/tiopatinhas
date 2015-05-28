@@ -10,6 +10,7 @@
     "instance_name": "instance",
     "region": "us-east-1",
     "placement": "us-east-1a",
+    "instance_profile_name": null,
     "health_check_path": "ping",
     "lower_cpu": 30,
     "upper_cpu": 50,
