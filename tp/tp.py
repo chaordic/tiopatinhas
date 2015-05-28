@@ -78,8 +78,11 @@ class TPManager:
         self.weight_factor = weight_factor
         self.tags = self.conf.get("tags", {})
         self.region = region or self.conf.get("region", "us-east-1") #parameter has precedence over config file
+        self.subnet_id = self.conf.get("subnet_id", None)
 
-        if az:
+        if self.subnet_id is not None:
+            self.placement = None
+        elif az:
             self.placement = self.region + az
         else:
             self.placement = self.conf.get("placement", "us-east-1c")
@@ -169,9 +172,10 @@ class TPManager:
 
         ami = self.ec2.get_image(tapping_group.image_id)
         for c in range(amount):
-            r = ami.run(security_groups = tapping_group.security_groups,
+            r = ami.run(security_group_ids = tapping_group.security_groups,
                     instance_type = self.emergency_type,
                     placement = self.placement,
+                    subnet_id = self.subnet_id,
                     user_data = self.user_data)
             self.logger.info(">> buy(): purchased 1 on-demand instance")
             time.sleep(3)
@@ -201,7 +205,8 @@ class TPManager:
                 count = 1,
                 type = "one-time",
                 placement = self.placement,
-                security_groups = tapping_group.security_groups,
+                security_group_ids = tapping_group.security_groups,
+                subnet_id = self.subnet_id,
                 user_data = self.user_data,
                 instance_type = self.spot_type,
                 monitoring_enabled = True)

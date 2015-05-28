@@ -9,6 +9,7 @@
     "max_candidates": 6,
     "instance_name": "instance",
     "region": "us-east-1",
+    "subnet_id": "subnet-012345",
     "placement": "us-east-1a",
     "health_check_path": "ping",
     "lower_cpu": 30,
