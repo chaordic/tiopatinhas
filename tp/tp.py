@@ -80,7 +80,7 @@ class TPManager:
         self.region = region or self.conf.get("region", "us-east-1") #parameter has precedence over config file
 
         if az:
-            self.placement = self.region + az 
+            self.placement = self.region + az
         else:
             self.placement = self.conf.get("placement", "us-east-1c")
         self.side_group = side_group
@@ -530,5 +530,5 @@ availability's group load balancer.
         usage()
         sys.exit(2)
 
-    tp = TPManager(group, verbose)
+    tp = TPManager(group, debug=verbose)
     tp.run()
