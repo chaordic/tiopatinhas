@@ -77,6 +77,7 @@ class TPManager:
         self.emergency_type = self.conf.get("emergency_type", "c1.xlarge")
         self.weight_factor = weight_factor
         self.tags = self.conf.get("tags", {})
+        self.instance_profile_name = self.conf.get("instance_profile_name", None)
         self.region = region or self.conf.get("region", "us-east-1") #parameter has precedence over config file
 
         if az:
@@ -171,6 +172,7 @@ class TPManager:
         for c in range(amount):
             r = ami.run(security_groups = tapping_group.security_groups,
                     instance_type = self.emergency_type,
+                    instance_profile_name = self.instance_profile_name,
                     placement = self.placement,
                     user_data = self.user_data)
             self.logger.info(">> buy(): purchased 1 on-demand instance")
@@ -204,6 +206,7 @@ class TPManager:
                 security_groups = tapping_group.security_groups,
                 user_data = self.user_data,
                 instance_type = self.spot_type,
+                instance_profile_name = self.instance_profile_name,
                 monitoring_enabled = True)
         # TODO really?
         while 1:
