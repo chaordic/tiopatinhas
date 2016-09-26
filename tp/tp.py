@@ -178,7 +178,8 @@ class TPManager:
                     instance_profile_name = self.instance_profile_name,
                     placement = self.placement,
                     subnet_id = self.subnet_id,
-                    user_data = self.user_data)
+                    user_data = self.user_data,
+                    monitoring_enabled = True)
             self.logger.info(">> buy(): purchased 1 on-demand instance")
             time.sleep(3)
             instance = r.instances[0]
@@ -384,7 +385,7 @@ class TPManager:
 
             if request.instance_id not in running_in_lb:
                 self.bids.append(request)
-            else:
+            elif request.status.code != 'marked-for-termination':
                 self.live.append(request)
 
         self.emergency = []
