@@ -80,7 +80,7 @@ class TPManager:
         self.instance_profile_name = self.conf.get("instance_profile_name", None)
         self.region = region or self.conf.get("region", "us-east-1") #parameter has precedence over config file
         self.subnet_id = self.conf.get("subnet_id", None)
-        self.monitoring_enabled = self.conf.get("monitoring_enabled", True)
+        self.monitoring_enabled = self.conf.get("monitoring_enabled", False)
 
         if self.subnet_id is not None:
             self.placement = None
