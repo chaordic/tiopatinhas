@@ -12,11 +12,7 @@
     "subnet_id": "subnet-012345",
     "placement": "us-east-1a",
     "instance_profile_name": null,
-    "health_check_path": "ping",
-    "lower_cpu": 30,
-    "upper_cpu": 50,
-    "lower_threshold": 2,
-    "upper_threshold": 2,
+    "monitoring_enabled": false,
     "tags": {},
     "user_data_file": null
 }

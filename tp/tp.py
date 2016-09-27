@@ -80,6 +80,7 @@ class TPManager:
         self.instance_profile_name = self.conf.get("instance_profile_name", None)
         self.region = region or self.conf.get("region", "us-east-1") #parameter has precedence over config file
         self.subnet_id = self.conf.get("subnet_id", None)
+        self.monitoring_enabled = self.conf.get("monitoring_enabled", False)
 
         if self.subnet_id is not None:
             self.placement = None
@@ -178,7 +179,8 @@ class TPManager:
                     instance_profile_name = self.instance_profile_name,
                     placement = self.placement,
                     subnet_id = self.subnet_id,
-                    user_data = self.user_data)
+                    user_data = self.user_data,
+                    monitoring_enabled = self.monitoring_enabled)
             self.logger.info(">> buy(): purchased 1 on-demand instance")
             time.sleep(3)
             instance = r.instances[0]
@@ -212,7 +214,7 @@ class TPManager:
                 user_data = self.user_data,
                 instance_type = self.spot_type,
                 instance_profile_name = self.instance_profile_name,
-                monitoring_enabled = True)
+                monitoring_enabled = self.monitoring_enabled)
         # TODO really?
         while 1:
             try:
@@ -384,7 +386,7 @@ class TPManager:
 
             if request.instance_id not in running_in_lb:
                 self.bids.append(request)
-            else:
+            elif request.status.code != 'marked-for-termination':
                 self.live.append(request)
 
         self.emergency = []
