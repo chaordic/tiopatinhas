@@ -12,7 +12,7 @@
     "subnet_id": "subnet-012345",
     "placement": "us-east-1a",
     "instance_profile_name": null,
-    "monitoring_enabled": False,
+    "monitoring_enabled": false,
     "tags": {},
     "user_data_file": null
 }
