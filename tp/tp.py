@@ -83,6 +83,8 @@ class TPManager:
         self.region = region or self.conf.get("region", "us-east-1")  # parameter has precedence over config file
         self.subnet_id = self.conf.get("subnet_id", None)
         self.monitoring_enabled = self.conf.get("monitoring_enabled", False)
+        self.cool_down_threshold = self.conf.get('cool_down_threshold', 360)
+        self.bid_threshold = self.conf.get('bid_threshold', 300)
 
         if self.subnet_id is not None:
             self.placement = None
@@ -95,6 +97,7 @@ class TPManager:
 
         self.started = False
         self.target = None
+        self.last_bid = 0
         self.last_change = 0
         self.previous_as_count = None
 
@@ -133,8 +136,8 @@ class TPManager:
         if self.previous_as_count != self.managed_by_autoscale():
             self.logger.info(">> refresh(): autoscale instance count changed from %s to %s",
                              self.previous_as_count, self.managed_by_autoscale())
-            if self.previous_as_count != None:
-                self.last_change = time.time()
+            if self.previous_as_count:
+                self.last_change = self.last_bid = time.time()
             self.previous_as_count = self.managed_by_autoscale()
 
     def guess_target(self):
@@ -142,12 +145,13 @@ class TPManager:
             self.target = min(self.managed_instances(), self.managed_by_autoscale())  # follow autoscale if stopped :)
             return
 
-        if self.target == None:
+        if not self.target:
             self.target = self.managed_instances()
         previous = self.target
 
         # How many instances we should keep running
-        if time.time() - self.last_change > 360:
+        elapsed_time = time.time() - self.last_change
+        if elapsed_time > self.cool_down_threshold:
             candidate = round(self.weight_factor * self.tapping_group.desired_capacity)
 
             # Never less than one
@@ -161,6 +165,10 @@ class TPManager:
             if candidate != previous:
                 self.logger.debug(">> guess_target(): changed target from %s to %s", previous, candidate)
                 self.target = candidate
+        else:
+            self.logger.info("guess_target(): not updating target for instances, waiting for cooldown!")
+            self.logger.debug("guess_target(): remaining time to next change %s", self.cool_down_threshold -
+                              elapsed_time)
 
     def managed_by_autoscale(self):
         return int(self.tapping_group.desired_capacity)
@@ -195,23 +203,30 @@ class TPManager:
                         subnet_id=self.subnet_id,
                         user_data=self.user_data,
                         monitoring_enabled=self.monitoring_enabled)
+
             self.logger.info(">> buy(): purchased 1 on-demand instance")
             time.sleep(3)
+
+            # get instance since count is 1
             instance = r.instances[0]
 
-            while 1:
-                try:
-                    instance.add_tag("tp:group", tapping_group.name)
-                    break
-                except Exception, e:
-                    traceback.print_exc()
-                    time.sleep(3)
+            # get the status
+            status = instance.update()
+
+            # check for the status while isn't running
+            while status != 'running':
+                time.sleep(5)
+                status = instance.update()
+
+            # when it's finally running, update the tag
+            self.logger.info("Instance status = " + status)
+            instance.add_tag('tp:group', tapping_group.name)
 
     def bid(self, force=False):
-        elapsed_time = time.time() - self.last_change
-        if not force and elapsed_time < 300:
+        elapsed_time = time.time() - self.last_bid
+        if not force and elapsed_time < self.bid_threshold:
             self.logger.info("bid(): last change was too recent, skipping bid")
-            self.logger.debug("bid(): remaining time to next change %s", 300 - elapsed_time)
+            self.logger.debug("bid(): remaining time to next change %s", self.bid_threshold - elapsed_time)
             time.sleep(10)
             return
 
@@ -229,17 +244,24 @@ class TPManager:
             instance_type=self.spot_type,
             instance_profile_name=self.instance_profile_name,
             monitoring_enabled=self.monitoring_enabled)
-        # TODO really?
-        while 1:
-            try:
-                request[0].add_tag('tp:tag', self.side_group)
-                break
-            except Exception, e:
-                traceback.print_exc()
-                time.sleep(3)
+
+        # get instance since count is 1
+        instance = request.instances[0]
+
+        # get the status
+        status = instance.update()
+
+        # check for the status while it isn't running
+        while status != 'running':
+            time.sleep(5)
+            status = instance.update()
+
+        # when it's finally running, update the tag
+        self.logger.info("Instance status = " + status)
+        instance.add_tag('tp:tag', self.side_group)
 
         self.logger.info(">> bid(): created 1 bid of %s for %s", self.spot_type, self.max_price[self.spot_type])
-        self.last_change = time.time()
+        self.last_bid = time.time()
         self.bids.append(request)
 
     def check_alive(self, instance_id):
