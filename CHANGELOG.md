@@ -2,9 +2,10 @@
     - Added Monitoring enabled option
     - Added submodule support
     - Added VPC support
-    - Added instance IAM role /profile support
+    - Added instance IAM role/profile support
     - Removed CPU checks from tiopatinhas and added weight factor (now you decide the ratio of machines that tiopatinhas will handle and the ASG handles everything else)
     - Fixes on Market crashed handlers and LB bugs
+    - Instances marked-for-termination are now considered already down
 
 ## 0.1.1 (November 21, 2013)
 
