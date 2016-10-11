@@ -82,7 +82,7 @@ You may need to use `sudo` depending on your environment setup.
 Then:
 
 ```python
-from tiopatinhas.tp import tp
+from tp import tp
 
 t = tp.TPManager("auto scaling group name", debug=verbose)
 t.run()
