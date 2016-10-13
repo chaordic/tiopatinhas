@@ -27,24 +27,25 @@ use Spot Instances in systems which are not fault tolerant.
 
 ## Getting Started ##
 
+
 ### Before starting ###
 
-1. Make sure the boto python package is installed in your system. If you 
+1. Make sure the boto python package is installed in your system. If you
 use debian or ubuntu you can install it by typing: 'sudo pip install boto'.
-2. Make sure your AWS credentials are specified in a boto configuration file 
-(typically ~/.boto). Instruction on how to setup this file can be found here: 
+2. Make sure your AWS credentials are specified in a boto configuration file
+(typically ~/.boto). Instruction on how to setup this file can be found here:
 https://code.google.com/p/boto/wiki/BotoConfig
 
 ### Configuring tiopatinhas ###
 
-* Copy the template conf file (tp.conf.template) to tp/tp.conf so that the 
-script can read it and make the changes according to your needs. Tio patinhas 
+* Copy the template conf file (tp.conf.template) to tp/tp.conf so that the
+script can read it and make the changes according to your needs. Tio patinhas
 currently supports the following properties:
 
 #### Mandatory Properties
 
-* *max_price:* A map that specifies the maximum bid prices for each type 
-  of EC2 instance. TP will use the prices specified in this map to bid for 
+* *max_price:* A map that specifies the maximum bid prices for each type
+  of EC2 instance. TP will use the prices specified in this map to bid for
   instances of that type in the spot market.
 * *max_candidates:* The maximum number of instances TP will manage.
 * *instance_name:* The prefix that will be used by TP to name managed instances.
@@ -67,8 +68,37 @@ currently supports the following properties:
   You can enable or disable the detailed monitoring by setting this field to True or False. *(optional)*
     * more info: https://aws.amazon.com/cloudwatch/details/#amazon-ec2-monitoring
 
+### Coding with tiopatinhas  ###
+
+To install the latest version directly from [GitHub](https://github.com/chaordic/tiopatinhas):
+
+```bash
+$ git clone https://github.com/chaordic/tiopatinhas.git
+$ python tiopatinhas/setup.py install
+```
+
+You may need to use `sudo` depending on your environment setup.
+
+Then:
+
+```python
+from tp import tp
+
+t = tp.TPManager("auto scaling group name", debug=verbose)
+t.run()
+```
+
 ### Executing tiopatinhas ###
 
-* Once the tp/tp.conf file is ready, execute tiopatinhas issuing the following command:
+To install the latest version directly from [GitHub](https://github.com/chaordic/tiopatinhas):
+
+```bash
+$ git clone https://github.com/chaordic/tiopatinhas.git
+$ python tiopatinhas/setup.py install
+```
+
+You may need to use `sudo` depending on your environment setup.
+
+* Once the tp/tp.conf file is ready, execute tiopatinhas with the following command:
     * _python tp.py -g \<AutoScalingGroupName\>_ (this command must currently be executed from within the "tp" folder)
 * You must optionally supply options "-v" for verbose mode or "-d" for daemon mode.
