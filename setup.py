@@ -11,7 +11,7 @@ setup(
     license='Open Source',
     install_requires=requires,
     packages=['tp'],
-    package_data={'tp': ['tp.conf']},
+    package_data={'tp': ['tp.conf.template']},
     long_description=open('README.md').read(),
     zip_safe=False,
     url='https://www.github.com/chaordic/tiopatinhas/',
