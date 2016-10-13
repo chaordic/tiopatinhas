@@ -1,10 +1,8 @@
 #!/usr/bin/env python
 
 import boto
-from urllib import urlopen
 import time
 import os
-import traceback
 import logging
 import sys
 import simplejson as json
@@ -136,8 +134,6 @@ class TPManager:
         if self.previous_as_count != self.managed_by_autoscale():
             self.logger.info(">> refresh(): autoscale instance count changed from %s to %s",
                              self.previous_as_count, self.managed_by_autoscale())
-            if self.previous_as_count:
-                self.last_change = self.last_bid = time.time()
             self.previous_as_count = self.managed_by_autoscale()
 
     def guess_target(self):
@@ -316,9 +312,7 @@ class TPManager:
     def maybe_replace(self):
         for instance in self.emergency:
             self.logger.debug("proximity(%s): %s", instance.id, str(self.proximity(instance)))
-            if (self.proximity(instance) < 10
-                and self.proximity(instance) > 2
-                and self.managed_instances() <= self.target):
+            if 10 > self.proximity(instance) > 2 and self.managed_instances() <= self.target:
                 self.logger.info(">> maybe_replace(): attempting to replace %s", instance.id)
                 self.bid(force=True)
 
@@ -348,7 +342,7 @@ class TPManager:
         # server
         if self.emergency:
             for instance in self.emergency:
-                if self.proximity(instance) < 10 and self.proximity(instance) > 3 and not self.valid_bids():
+                if 10 > self.proximity(instance) > 3 and not self.valid_bids():
                     self.logger.info(">> maybe_demote(): removing emergency instance %s", instance.id)
                     self.dettach_instance(instance.id)
                     self.ec2.terminate_instances([instance.id])
@@ -431,8 +425,8 @@ class TPManager:
         all_instances = [r.instances for r in self.ec2.get_all_instances()]
         instances = chain.from_iterable(all_instances)
         for instance in instances:
-            if (instance.tags.get('tp:group', None) == self.tapping_group.name and
-                        instance.state not in ('terminated', 'shutting-down')):
+            if instance.tags.get('tp:group', None) == self.tapping_group.name and instance.state \
+                    not in ('terminated', 'shutting-down'):
                 self.emergency.append(instance)
                 if instance.id not in running_in_lb:
                     self.logger.info(">> load_state: Attaching new emergency instance %s to LB." % instance.id)
