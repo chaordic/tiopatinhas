@@ -162,9 +162,8 @@ class TPManager:
                 self.logger.debug(">> guess_target(): changed target from %s to %s", previous, candidate)
                 self.target = candidate
         else:
-            self.logger.info("guess_target(): not updating target for instances, waiting for cooldown!")
-            self.logger.debug("guess_target(): remaining time to next change %s", self.cool_down_threshold -
-                              elapsed_time)
+            self.logger.info("guess_target(): not updating target for instances, waiting for cool down! \
+                 Remaining time to next change %s", self.cool_down_threshold - elapsed_time)
 
     def managed_by_autoscale(self):
         return int(self.tapping_group.desired_capacity)
@@ -221,8 +220,8 @@ class TPManager:
     def bid(self, force=False):
         elapsed_time = time.time() - self.last_bid
         if not force and elapsed_time < self.bid_threshold:
-            self.logger.info("bid(): last change was too recent, skipping bid")
-            self.logger.debug("bid(): remaining time to next change %s", self.bid_threshold - elapsed_time)
+            self.logger.info("bid(): last change was too recent, skipping bid! Remaining time to next change %s",
+                             self.bid_threshold - elapsed_time)
             time.sleep(10)
             return
 
@@ -312,7 +311,7 @@ class TPManager:
     def maybe_replace(self):
         for instance in self.emergency:
             self.logger.debug("proximity(%s): %s", instance.id, str(self.proximity(instance)))
-            if 10 > self.proximity(instance) > 2 and self.managed_instances() <= self.target:
+            if (2 < self.proximity(instance) < 10) and self.managed_instances() <= self.target:
                 self.logger.info(">> maybe_replace(): attempting to replace %s", instance.id)
                 self.bid(force=True)
 
@@ -342,7 +341,7 @@ class TPManager:
         # server
         if self.emergency:
             for instance in self.emergency:
-                if 10 > self.proximity(instance) > 3 and not self.valid_bids():
+                if (3 < self.proximity(instance) < 10) and not self.valid_bids():
                     self.logger.info(">> maybe_demote(): removing emergency instance %s", instance.id)
                     self.dettach_instance(instance.id)
                     self.ec2.terminate_instances([instance.id])
@@ -425,8 +424,8 @@ class TPManager:
         all_instances = [r.instances for r in self.ec2.get_all_instances()]
         instances = chain.from_iterable(all_instances)
         for instance in instances:
-            if instance.tags.get('tp:group', None) == self.tapping_group.name and instance.state \
-                    not in ('terminated', 'shutting-down'):
+            if instance.tags.get('tp:group', None) == self.tapping_group.name and \
+                            instance.state not in ('terminated', 'shutting-down'):
                 self.emergency.append(instance)
                 if instance.id not in running_in_lb:
                     self.logger.info(">> load_state: Attaching new emergency instance %s to LB." % instance.id)
