@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 from setuptools import setup
 
-requires = ['boto']
+requires = ['boto', 'simplejson']
 
 setup(
     name='tiopatinhas',
