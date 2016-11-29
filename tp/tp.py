@@ -123,7 +123,7 @@ class TPManager:
             self.logger.warn("Could not read user from launch configuration group: %s."
                              "Will launch instances without user data.", self.tapping_group.lc.name)
 
-        self.logger.info("User data: %s", self.user_data)
+        self.logger.info("User data: \n%s", self.user_data)
 
     def refresh(self):
         self.tapping_group = AutoScaleInfo(self.side_group, self.region)
