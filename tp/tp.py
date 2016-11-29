@@ -21,8 +21,10 @@ logging.basicConfig(format='%(asctime)s %(name)s %(levelname)s %(message)s')
 logger = logging.getLogger("main")
 logger.setLevel(logging.DEBUG)
 
+
 class AutoScaleInfoException(Exception):
     pass
+
 
 class AutoScaleInfo:
     def __init__(self, autoscale_group_name, region):
@@ -44,10 +46,10 @@ class AutoScaleInfo:
         self.instance_type = self.lc.instance_type
         self.image_id = self.lc.image_id
         self.security_groups = self.lc.security_groups
+        self.user_data = self.lc.user_data
 
         self.load_balancers = self.ag.load_balancers
         self.desired_capacity = self.ag.desired_capacity
-
 
     def __repr__(self):
         return "<AutoScaleInfo Group:%s>" % self.name
@@ -78,7 +80,7 @@ class TPManager:
         self.weight_factor = weight_factor
         self.tags = self.conf.get("tags", {})
         self.instance_profile_name = self.conf.get("instance_profile_name", None)
-        self.region = region or self.conf.get("region", "us-east-1") #parameter has precedence over config file
+        self.region = region or self.conf.get("region", "us-east-1")  # parameter has precedence over config file
         self.subnet_id = self.conf.get("subnet_id", None)
         self.monitoring_enabled = self.conf.get("monitoring_enabled", False)
 
@@ -104,14 +106,26 @@ class TPManager:
         self.elb = boto.ec2.elb.connect_to_region(self.region)
 
         self.user_data = user_data
-        user_data_file = self.conf.get("user_data_file", None)
-        if not user_data and user_data_file:
+
+        if not self.user_data:
+            user_data_file = self.conf.get("user_data_file", None)
+            self.logger.info("Trying to get user data from file...")
             try:
                 with open(user_data_file) as f:
                     self.user_data = f.read()
             except IOError:
                 self.logger.warn("Could not read user data file: %s. Will launch instances without user data.",
                                  user_data_file)
+
+        if not self.user_data:
+            self.logger.info("Trying to get user data from launch configuration group...")
+            self.user_data = self.tapping_group.user_data
+
+        if not self.user_data:
+            self.logger.warn("Could not read user from launch configuration group: %s."
+                             "Will launch instances without user data.", self.tapping_group.lc.name)
+
+        self.logger.info("User data: \n%s", self.user_data)
 
     def refresh(self):
         self.tapping_group = AutoScaleInfo(self.side_group, self.region)
@@ -125,7 +139,7 @@ class TPManager:
 
     def guess_target(self):
         if not self.started:
-            self.target = min(self.managed_instances(), self.managed_by_autoscale()) # follow autoscale if stopped :)
+            self.target = min(self.managed_instances(), self.managed_by_autoscale())  # follow autoscale if stopped :)
             return
 
         if self.target == None:
@@ -174,13 +188,13 @@ class TPManager:
 
         ami = self.ec2.get_image(tapping_group.image_id)
         for c in range(amount):
-            r = ami.run(security_group_ids = tapping_group.security_groups,
-                    instance_type = self.emergency_type,
-                    instance_profile_name = self.instance_profile_name,
-                    placement = self.placement,
-                    subnet_id = self.subnet_id,
-                    user_data = self.user_data,
-                    monitoring_enabled = self.monitoring_enabled)
+            r = ami.run(security_group_ids=tapping_group.security_groups,
+                        instance_type=self.emergency_type,
+                        instance_profile_name=self.instance_profile_name,
+                        placement=self.placement,
+                        subnet_id=self.subnet_id,
+                        user_data=self.user_data,
+                        monitoring_enabled=self.monitoring_enabled)
             self.logger.info(">> buy(): purchased 1 on-demand instance")
             time.sleep(3)
             instance = r.instances[0]
@@ -204,17 +218,17 @@ class TPManager:
         tapping_group = self.tapping_group
 
         request = self.ec2.request_spot_instances(
-                price = self.max_price[self.spot_type],
-                image_id = tapping_group.image_id,
-                count = 1,
-                type = "one-time",
-                placement = self.placement,
-                security_group_ids = tapping_group.security_groups,
-                subnet_id = self.subnet_id,
-                user_data = self.user_data,
-                instance_type = self.spot_type,
-                instance_profile_name = self.instance_profile_name,
-                monitoring_enabled = self.monitoring_enabled)
+            price=self.max_price[self.spot_type],
+            image_id=tapping_group.image_id,
+            count=1,
+            type="one-time",
+            placement=self.placement,
+            security_group_ids=tapping_group.security_groups,
+            subnet_id=self.subnet_id,
+            user_data=self.user_data,
+            instance_type=self.spot_type,
+            instance_profile_name=self.instance_profile_name,
+            monitoring_enabled=self.monitoring_enabled)
         # TODO really?
         while 1:
             try:
@@ -281,8 +295,8 @@ class TPManager:
         for instance in self.emergency:
             self.logger.debug("proximity(%s): %s", instance.id, str(self.proximity(instance)))
             if (self.proximity(instance) < 10
-                    and self.proximity(instance) > 2
-                    and self.managed_instances() <= self.target):
+                and self.proximity(instance) > 2
+                and self.managed_instances() <= self.target):
                 self.logger.info(">> maybe_replace(): attempting to replace %s", instance.id)
                 self.bid(force=True)
 
@@ -396,7 +410,7 @@ class TPManager:
         instances = chain.from_iterable(all_instances)
         for instance in instances:
             if (instance.tags.get('tp:group', None) == self.tapping_group.name and
-                    instance.state not in ('terminated', 'shutting-down')):
+                        instance.state not in ('terminated', 'shutting-down')):
                 self.emergency.append(instance)
                 if instance.id not in running_in_lb:
                     self.logger.info(">> load_state: Attaching new emergency instance %s to LB." % instance.id)
@@ -419,7 +433,7 @@ class TPManager:
         self.logger.debug("Managed by Autoscale: " + str(self.managed_by_autoscale()))
         self.logger.debug("Managed by TP: " + str(self.managed_instances()))
         self.logger.debug("Target: " + str(self.target))
-        self.logger.debug("Live: " +  ", ".join([x.instance_id for x in self.live]))
+        self.logger.debug("Live: " + ", ".join([x.instance_id for x in self.live]))
         self.logger.debug("Emergency: " + ", ".join([x.id for x in self.emergency]))
         self.logger.debug("LB Unhealthy: " + ", ".join(self.unhealthy_ids))
 
@@ -470,9 +484,11 @@ class TPManager:
         self.maybe_demote()
         self.previous_managed = self.live_or_emergency()
 
+
 def flush_output():
     sys.stdout.flush()
     sys.stderr.flush()
+
 
 def daemonize():
     pid = os.fork()
@@ -495,8 +511,10 @@ def daemonize():
     os.dup2(out.fileno(), sys.stdout.fileno())
     os.dup2(err.fileno(), sys.stderr.fileno())
 
+
 if __name__ == '__main__':
     import getopt
+
 
     def usage():
         print """\
@@ -510,6 +528,7 @@ availability's group load balancer.
    -d, --daemonize                 Detach from the terminal
    -v, --verbose                   Verbose mode
 """
+
 
     try:
         opts, args = getopt.getopt(sys.argv[1:], "g:dv", ["group=", "daemonize", "verbose"])

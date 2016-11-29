@@ -35,6 +35,7 @@ use debian or ubuntu you can install it by typing: 'sudo pip install boto'.
 2. Make sure your AWS credentials are specified in a boto configuration file
 (typically ~/.boto). Instruction on how to setup this file can be found here:
 https://code.google.com/p/boto/wiki/BotoConfig
+3. To run the setup, you may need to install [setuptools](https://setuptools.readthedocs.io/en/latest/)
 
 ### Configuring tiopatinhas ###
 
@@ -60,7 +61,8 @@ currently supports the following properties:
 #### Optional properties
 * *tags:* A map containing custom metadata tags that must assigned to TP instances. *(optional)*
     * more info: http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/Using_Tags.html
-* *user_data_file:* An optional script or data that must be supplied to the instance on startup. *(optional)*
+* *user_data_file:* An optional script or data that will be supplied to the instance on startup.
+  If not provided, it will try to get from the Launch Configuration Group. *(optional)*
     * more info: http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/AESDG-chapter-instancedata.html
 * *subnet_id:* The VPC's subnet id that will be used by instances TP will manage. *(optional)*
     * more info: http://docs.aws.amazon.com/AmazonVPC/latest/UserGuide/VPC_Subnets.html
