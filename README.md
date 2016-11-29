@@ -35,6 +35,7 @@ use debian or ubuntu you can install it by typing: 'sudo pip install boto'.
 2. Make sure your AWS credentials are specified in a boto configuration file
 (typically ~/.boto). Instruction on how to setup this file can be found here:
 https://code.google.com/p/boto/wiki/BotoConfig
+3. To run the setup, you may need to install [setuptools](https://setuptools.readthedocs.io/en/latest/)
 
 ### Configuring tiopatinhas ###
 
