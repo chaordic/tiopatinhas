@@ -108,7 +108,7 @@ class TPManager:
         self.user_data = user_data
         user_data_file = self.conf.get("user_data_file", None)
         if not user_data and user_data_file:
-            self.logger.info("trying to user data from file...")
+            self.logger.info("Trying to user data from file...")
             try:
                 with open(user_data_file) as f:
                     self.user_data = f.read()
@@ -117,11 +117,13 @@ class TPManager:
                                  user_data_file)
 
         if not user_data and not user_data_file and self.tapping_group.user_data:
-            self.logger.info("trying to user data from launch configuration group...")
+            self.logger.info("Trying to user data from launch configuration group...")
             self.user_data = self.tapping_group.user_data
         else:
             self.logger.warn("Could not read user from launch configuration group: %s."
                              "Will launch instances without user data.", self.tapping_group.lc.name)
+
+        self.logger.info("User data: %s", self.user_data)
 
     def refresh(self):
         self.tapping_group = AutoScaleInfo(self.side_group, self.region)
