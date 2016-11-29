@@ -106,9 +106,10 @@ class TPManager:
         self.elb = boto.ec2.elb.connect_to_region(self.region)
 
         self.user_data = user_data
-        user_data_file = self.conf.get("user_data_file", None)
-        if not user_data and user_data_file:
-            self.logger.info("Trying to user data from file...")
+
+        if not self.user_data:
+            user_data_file = self.conf.get("user_data_file", None)
+            self.logger.info("Trying to get user data from file...")
             try:
                 with open(user_data_file) as f:
                     self.user_data = f.read()
@@ -116,10 +117,11 @@ class TPManager:
                 self.logger.warn("Could not read user data file: %s. Will launch instances without user data.",
                                  user_data_file)
 
-        if not user_data and not user_data_file and self.tapping_group.user_data:
-            self.logger.info("Trying to user data from launch configuration group...")
+        if not self.user_data:
+            self.logger.info("Trying to get user data from launch configuration group...")
             self.user_data = self.tapping_group.user_data
-        else:
+
+        if not self.user_data:
             self.logger.warn("Could not read user from launch configuration group: %s."
                              "Will launch instances without user data.", self.tapping_group.lc.name)
 
