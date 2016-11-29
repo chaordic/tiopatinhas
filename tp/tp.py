@@ -432,12 +432,12 @@ class TPManager:
                     self.attach_instance(instance.id, "OD")
 
     def stop(self):
-        ''' Prepares this TPManager to stop by not launching new machines
+        """ Prepares this TPManager to stop by not launching new machines
             and gradually remove old machines.
 
             This manager loop will only stop when both the autoscaling group
             and the TP manager has zero instances running.
-        '''
+        """
         self.started = False
 
     def start(self):
