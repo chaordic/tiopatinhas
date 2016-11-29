@@ -1,3 +1,6 @@
+## 1.0.1 (November 29, 2016)
+    - Added support to get user data from Launch Configuration Group if not provided
+
 ## 1.0.0 (October 11, 2016)
     - Added Monitoring enabled option
     - Added submodule support
