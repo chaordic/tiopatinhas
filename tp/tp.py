@@ -106,9 +106,9 @@ class TPManager:
         self.elb = boto.ec2.elb.connect_to_region(self.region)
 
         self.user_data = user_data
+        user_data_file = self.conf.get("user_data_file", None)
 
-        if not self.user_data:
-            user_data_file = self.conf.get("user_data_file", None)
+        if not self.user_data and user_data_file:
             self.logger.info("Trying to get user data from file...")
             try:
                 with open(user_data_file) as f:
