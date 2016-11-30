@@ -240,20 +240,21 @@ class TPManager:
             instance_profile_name=self.instance_profile_name,
             monitoring_enabled=self.monitoring_enabled)
 
-        # get instance since count is 1
-        instance = request.instances[0]
+        # get reserve since count is 1
+        reserve = request[0]
 
         # get the status
-        status = instance.update()
+        status = reserve.status
 
         # check for the status while it isn't running
-        while status != 'running':
+        while status.code != 'fulfilled':
+            self.logger.info("Instance status = %s", status.code)
             time.sleep(5)
-            status = instance.update()
+            status = self.ec2.get_all_spot_instance_requests(request_ids=[reserve.id])[0].status
 
         # when it's finally running, update the tag
-        self.logger.info("Instance status = " + status)
-        instance.add_tag('tp:tag', self.side_group)
+        self.logger.info("Instance status = %s", status.code)
+        reserve.add_tag('tp:tag', self.side_group)
 
         self.logger.info(">> bid(): created 1 bid of %s for %s", self.spot_type, self.max_price[self.spot_type])
         self.last_bid = time.time()
