@@ -1,8 +1,8 @@
-## 1.0.2 (, 2016)
+## 1.0.2 (December 02, 2016)
     - Added cool down and bid threshold times in the configuration file
     - Refresh state doesn't affect tiopatinhas' actions anymore
 
-## 1.0.1 (November 29, 2016)
+## 1.0.1 (November 30, 2016)
     - Added support to get user data from Launch Configuration Group if not provided
 
 ## 1.0.0 (October 11, 2016)

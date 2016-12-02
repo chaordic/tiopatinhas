@@ -162,8 +162,8 @@ class TPManager:
                 self.logger.debug(">> guess_target(): changed target from %s to %s", previous, candidate)
                 self.target = candidate
         else:
-            self.logger.info("guess_target(): not updating target for instances, waiting for cool down! \
-                 Remaining time to next change %s", self.cool_down_threshold - elapsed_time)
+            self.logger.info("guess_target(): not updating target for instances, waiting for cool down!"
+                             "Remaining time to next change %s", self.cool_down_threshold - elapsed_time)
 
     def managed_by_autoscale(self):
         return int(self.tapping_group.desired_capacity)

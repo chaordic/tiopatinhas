@@ -5,7 +5,7 @@ requires = ['boto', 'simplejson']
 
 setup(
     name='tiopatinhas',
-    version='1.0.1',
+    version='1.0.2',
     author='Chaordic Systems',
     description='An Amazon Autoscaling companion that uses the Spot Market',
     license='Open Source',
