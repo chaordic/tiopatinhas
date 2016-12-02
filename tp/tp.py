@@ -1,10 +1,8 @@
 #!/usr/bin/env python
 
 import boto
-from urllib import urlopen
 import time
 import os
-import traceback
 import logging
 import sys
 import simplejson as json
@@ -83,6 +81,8 @@ class TPManager:
         self.region = region or self.conf.get("region", "us-east-1")  # parameter has precedence over config file
         self.subnet_id = self.conf.get("subnet_id", None)
         self.monitoring_enabled = self.conf.get("monitoring_enabled", False)
+        self.cool_down_threshold = self.conf.get('cool_down_threshold', 360)
+        self.bid_threshold = self.conf.get('bid_threshold', 300)
 
         if self.subnet_id is not None:
             self.placement = None
@@ -95,6 +95,7 @@ class TPManager:
 
         self.started = False
         self.target = None
+        self.last_bid = 0
         self.last_change = 0
         self.previous_as_count = None
 
@@ -133,8 +134,6 @@ class TPManager:
         if self.previous_as_count != self.managed_by_autoscale():
             self.logger.info(">> refresh(): autoscale instance count changed from %s to %s",
                              self.previous_as_count, self.managed_by_autoscale())
-            if self.previous_as_count != None:
-                self.last_change = time.time()
             self.previous_as_count = self.managed_by_autoscale()
 
     def guess_target(self):
@@ -142,12 +141,13 @@ class TPManager:
             self.target = min(self.managed_instances(), self.managed_by_autoscale())  # follow autoscale if stopped :)
             return
 
-        if self.target == None:
+        if not self.target:
             self.target = self.managed_instances()
         previous = self.target
 
         # How many instances we should keep running
-        if time.time() - self.last_change > 360:
+        elapsed_time = time.time() - self.last_change
+        if elapsed_time > self.cool_down_threshold:
             candidate = round(self.weight_factor * self.tapping_group.desired_capacity)
 
             # Never less than one
@@ -161,6 +161,9 @@ class TPManager:
             if candidate != previous:
                 self.logger.debug(">> guess_target(): changed target from %s to %s", previous, candidate)
                 self.target = candidate
+        else:
+            self.logger.info("guess_target(): not updating target for instances, waiting for cool down! \
+                 Remaining time to next change %s", self.cool_down_threshold - elapsed_time)
 
     def managed_by_autoscale(self):
         return int(self.tapping_group.desired_capacity)
@@ -195,23 +198,30 @@ class TPManager:
                         subnet_id=self.subnet_id,
                         user_data=self.user_data,
                         monitoring_enabled=self.monitoring_enabled)
+
             self.logger.info(">> buy(): purchased 1 on-demand instance")
             time.sleep(3)
+
+            # get instance since count is 1
             instance = r.instances[0]
 
-            while 1:
-                try:
-                    instance.add_tag("tp:group", tapping_group.name)
-                    break
-                except Exception, e:
-                    traceback.print_exc()
-                    time.sleep(3)
+            # get the status
+            status = instance.update()
+
+            # check for the status while isn't running
+            while status != 'running':
+                time.sleep(5)
+                status = instance.update()
+
+            # when it's finally running, update the tag
+            self.logger.info("Instance status = " + status)
+            instance.add_tag('tp:group', tapping_group.name)
 
     def bid(self, force=False):
-        elapsed_time = time.time() - self.last_change
-        if not force and elapsed_time < 300:
-            self.logger.info("bid(): last change was too recent, skipping bid")
-            self.logger.debug("bid(): remaining time to next change %s", 300 - elapsed_time)
+        elapsed_time = time.time() - self.last_bid
+        if not force and elapsed_time < self.bid_threshold:
+            self.logger.info("bid(): last change was too recent, skipping bid! Remaining time to next change %s",
+                             self.bid_threshold - elapsed_time)
             time.sleep(10)
             return
 
@@ -229,17 +239,25 @@ class TPManager:
             instance_type=self.spot_type,
             instance_profile_name=self.instance_profile_name,
             monitoring_enabled=self.monitoring_enabled)
-        # TODO really?
-        while 1:
-            try:
-                request[0].add_tag('tp:tag', self.side_group)
-                break
-            except Exception, e:
-                traceback.print_exc()
-                time.sleep(3)
+
+        # get the first reservation since count is 1
+        reservation = request[0]
+
+        # get the status
+        status = reservation.status
+
+        # check for the status while it isn't running
+        while status.code != 'fulfilled':
+            self.logger.info("Reservation status = %s", status.code)
+            time.sleep(5)
+            status = self.ec2.get_all_spot_instance_requests(request_ids=[reservation.id])[0].status
+
+        # when it's finally fulfilled, update the tag
+        self.logger.info("Reservation status = %s", status.code)
+        reservation.add_tag('tp:tag', self.side_group)
 
         self.logger.info(">> bid(): created 1 bid of %s for %s", self.spot_type, self.max_price[self.spot_type])
-        self.last_change = time.time()
+        self.last_bid = time.time()
         self.bids.append(request)
 
     def check_alive(self, instance_id):
@@ -294,9 +312,7 @@ class TPManager:
     def maybe_replace(self):
         for instance in self.emergency:
             self.logger.debug("proximity(%s): %s", instance.id, str(self.proximity(instance)))
-            if (self.proximity(instance) < 10
-                and self.proximity(instance) > 2
-                and self.managed_instances() <= self.target):
+            if (2 < self.proximity(instance) < 10) and self.managed_instances() <= self.target:
                 self.logger.info(">> maybe_replace(): attempting to replace %s", instance.id)
                 self.bid(force=True)
 
@@ -326,7 +342,7 @@ class TPManager:
         # server
         if self.emergency:
             for instance in self.emergency:
-                if self.proximity(instance) < 10 and self.proximity(instance) > 3 and not self.valid_bids():
+                if (3 < self.proximity(instance) < 10) and not self.valid_bids():
                     self.logger.info(">> maybe_demote(): removing emergency instance %s", instance.id)
                     self.dettach_instance(instance.id)
                     self.ec2.terminate_instances([instance.id])
@@ -409,20 +425,20 @@ class TPManager:
         all_instances = [r.instances for r in self.ec2.get_all_instances()]
         instances = chain.from_iterable(all_instances)
         for instance in instances:
-            if (instance.tags.get('tp:group', None) == self.tapping_group.name and
-                        instance.state not in ('terminated', 'shutting-down')):
+            if instance.tags.get('tp:group', None) == self.tapping_group.name and \
+                            instance.state not in ('terminated', 'shutting-down'):
                 self.emergency.append(instance)
                 if instance.id not in running_in_lb:
                     self.logger.info(">> load_state: Attaching new emergency instance %s to LB." % instance.id)
                     self.attach_instance(instance.id, "OD")
 
     def stop(self):
-        ''' Prepares this TPManager to stop by not launching new machines
+        """ Prepares this TPManager to stop by not launching new machines
             and gradually remove old machines.
 
             This manager loop will only stop when both the autoscaling group
             and the TP manager has zero instances running.
-        '''
+        """
         self.started = False
 
     def start(self):

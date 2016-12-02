@@ -13,6 +13,8 @@
     "placement": "us-east-1a",
     "instance_profile_name": null,
     "monitoring_enabled": false,
+    "cool_down_threshold": 360,
+    "bid_threshold": 300,
     "tags": {},
     "user_data_file": null
 }
