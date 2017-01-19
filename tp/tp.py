@@ -451,9 +451,10 @@ class TPManager:
     def print_state(self):
         self.logger.debug("*** Current state:")
         self.logger.debug("Managed by Autoscale: " + str(self.managed_by_autoscale()))
-        self.logger.debug("Managed by TP: " + str(self.managed_instances()))
-        self.logger.debug("Target: " + str(self.target))
-        self.logger.debug("Live: " + ", ".join([x.instance_id for x in self.live]))
+        self.logger.debug("TP target: " + str(self.target))
+        self.logger.debug("Instances managed by TP: " + str(self.managed_instances()))
+        self.logger.debug("TP live instances: " + str(len(self.live)) + " [" +
+                          ", ".join([x.instance_id for x in self.live]) + "]")
         self.logger.debug("Emergency: " + ", ".join([x.id for x in self.emergency]))
         self.logger.debug("LB Unhealthy: " + ", ".join(self.unhealthy_ids))
 
