@@ -39,7 +39,7 @@ class AutoScaleInfo:
             lcs = self.autoscale.get_all_launch_configurations(names=[self.ag.launch_config_name])
             self.lc = lcs[0]
         except:
-            raise ValueError("Couldn't retrive LaunchConfiguration for %s" % autoscale_group_name)
+            raise ValueError("Couldn't retrieve LaunchConfiguration for %s" % autoscale_group_name)
 
         self.instance_type = self.lc.instance_type
         self.image_id = self.lc.image_id
@@ -98,10 +98,12 @@ class TPManager:
         self.last_bid = 0
         self.last_change = 0
         self.previous_as_count = None
+        self.previous_managed = 0
 
         self.bids = []
         self.live = []
         self.emergency = []
+        self.unhealthy_ids = set()
 
         self.ec2 = boto.ec2.connect_to_region(self.region)
         self.elb = boto.ec2.elb.connect_to_region(self.region)
@@ -124,7 +126,7 @@ class TPManager:
 
         if not self.user_data:
             self.logger.warn("Could not read user from launch configuration group: %s."
-                             "Will launch instances without user data.", self.tapping_group.lc.name)
+                             " Will launch instances without user data.", self.tapping_group.lc.name)
 
         self.logger.info("User data: \n%s", self.user_data)
 
@@ -135,6 +137,21 @@ class TPManager:
             self.logger.info(">> refresh(): autoscale instance count changed from %s to %s",
                              self.previous_as_count, self.managed_by_autoscale())
             self.previous_as_count = self.managed_by_autoscale()
+
+    def is_ec2_state_running(self, instance_id):
+        def ec2_state(i_id):
+            return self.ec2.get_all_instance_status(instance_ids=[i_id])
+
+        try:
+            found_instance = ec2_state(instance_id)
+            return len(found_instance) > 0 and found_instance[0].state_name not in (
+                'terminated', 'shutting-down')
+        except EC2ResponseError as inst:
+            if inst.error_code == "InvalidInstanceID.NotFound":
+                self.logger.warn("LB with invalid instance: %s", instance_id)
+                return False
+            else:
+                raise inst
 
     def guess_target(self):
         if not self.started:
@@ -163,7 +180,7 @@ class TPManager:
                 self.target = candidate
         else:
             self.logger.info("guess_target(): not updating target for instances, waiting for cool down!"
-                             "Remaining time to next change %s", self.cool_down_threshold - elapsed_time)
+                             " Remaining time to next change %s", self.cool_down_threshold - elapsed_time)
 
     def managed_by_autoscale(self):
         return int(self.tapping_group.desired_capacity)
@@ -327,10 +344,10 @@ class TPManager:
 
         minute = int(instance.launch_time.split(":")[1])
         minute_now = datetime.now().minute
-        o = minute - minute_now
-        if o < -1:
-            o = (minute + 60) - minute_now
-        return o
+        time_remaining = minute - minute_now
+        if time_remaining < -1:
+            time_remaining = (minute + 60) - minute_now
+        return time_remaining
 
     def maybe_demote(self):
         # First remove open, unfulfilled bids
@@ -378,19 +395,6 @@ class TPManager:
         return False
 
     def load_state(self):
-        # TODO move it from here to somewhere else
-        def is_ec2_state_running(instance_id):
-            ec2_state = lambda instance_id: self.ec2.get_all_instance_status(instance_ids=[instance_id])
-            try:
-                instance = ec2_state(instance_id)
-                return len(instance) > 0 and instance[0].state_name not in ('terminated', 'shutting-down')
-            except EC2ResponseError as inst:
-                if inst.error_code == "InvalidInstanceID.NotFound":
-                    self.logger.warn("LB with invalid instance: %s", instance.id)
-                    return False
-                else:
-                    raise inst
-
         running_in_lb = []
         self.unhealthy_ids = set()
 
@@ -400,7 +404,7 @@ class TPManager:
                     self.unhealthy_ids.add(instance_state.instance_id)
                 # Some times some dead instances get stuck on LB and boto lib doesn't know how to treat it
                 # This make sure that instance is alive and avoid bug on get_all_instances method
-                elif is_ec2_state_running(instance_state.instance_id):
+                elif self.is_ec2_state_running(instance_state.instance_id):
                     running_in_lb.append(instance_state.instance_id)
                 else:
                     self.dettach_instance(instance_state.instance_id)
@@ -519,13 +523,13 @@ def daemonize():
 
     in_ = file("/dev/null", 'r')
     out = file("/dev/null", 'a+')
-    err = file("/dev/null", 'a+')
+    error = file("/dev/null", 'a+')
 
     flush_output()
 
     os.dup2(in_.fileno(), sys.stdin.fileno())
     os.dup2(out.fileno(), sys.stdout.fileno())
-    os.dup2(err.fileno(), sys.stderr.fileno())
+    os.dup2(error.fileno(), sys.stderr.fileno())
 
 
 if __name__ == '__main__':
