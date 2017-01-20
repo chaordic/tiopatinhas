@@ -171,7 +171,6 @@ class TPManager:
 
         max_candidates = self.conf.get("max_candidates", 6)
         candidate = min(candidate, max_candidates)
-        self.logger.debug("Current candidate for target instances: %s", str(candidate))
 
         if candidate != previous:
             self.logger.debug(">> guess_target(): changed target from %s to %s", previous, candidate)
