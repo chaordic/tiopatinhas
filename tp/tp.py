@@ -163,24 +163,19 @@ class TPManager:
         previous = self.target
 
         # How many instances we should keep running
-        elapsed_time = time.time() - self.last_change
-        if elapsed_time > self.cool_down_threshold:
-            candidate = round(self.weight_factor * self.tapping_group.desired_capacity)
+        candidate = round(self.weight_factor * self.tapping_group.desired_capacity)
 
-            # Never less than one
-            if candidate < 1:
-                candidate = 1
+        # Never less than one
+        if candidate < 1:
+            candidate = 1
 
-            max_candidates = self.conf.get("max_candidates", 6)
-            candidate = min(candidate, max_candidates)
-            self.logger.debug("Current candidate for target instances: %s", str(candidate))
+        max_candidates = self.conf.get("max_candidates", 6)
+        candidate = min(candidate, max_candidates)
+        self.logger.debug("Current candidate for target instances: %s", str(candidate))
 
-            if candidate != previous:
-                self.logger.debug(">> guess_target(): changed target from %s to %s", previous, candidate)
-                self.target = candidate
-        else:
-            self.logger.info("guess_target(): not updating target for instances, waiting for cool down!"
-                             " Remaining time to next change %s", self.cool_down_threshold - elapsed_time)
+        if candidate != previous:
+            self.logger.debug(">> guess_target(): changed target from %s to %s", previous, candidate)
+            self.target = candidate
 
     def managed_by_autoscale(self):
         return int(self.tapping_group.desired_capacity)
@@ -317,7 +312,11 @@ class TPManager:
                     self.live.remove(instance)
 
     def maybe_promote(self, spot_request):
-        if self.check_alive(spot_request.instance_id):
+        elapsed_time = time.time() - self.last_change
+        if elapsed_time <= self.cool_down_threshold:
+            self.logger.info("Not promoting any instances, waiting for cool down!"
+                             " Remaining time to next change %s", self.cool_down_threshold - elapsed_time)
+        elif self.check_alive(spot_request.instance_id):
             self.logger.info(">> maybe_promote(): %s is alive, promoting", spot_request)
 
             self.attach_instance(spot_request.instance_id, "TP")
@@ -376,6 +375,13 @@ class TPManager:
                 bid.cancel()
                 self.bids.remove(bid)
                 return True
+
+        elapsed_time = time.time() - self.last_change
+
+        if elapsed_time > self.cool_down_threshold:
+            self.logger.info("Not removing any instances, waiting for cool down!"
+                             " Remaining time to next change %s", self.cool_down_threshold - elapsed_time)
+            return False
 
         self.live.sort(key=self.proximity)
 
