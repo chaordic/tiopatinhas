@@ -56,6 +56,9 @@ currently supports the following properties:
 
 * *spot_type:* The instance type to bid for in the spot market (recommended: the same instance from the ASG)
 * *emergency_type:* The instance type to buy in case of market crash (recommended: the same instance from the ASG)
+* *bid_threshold:* Time to wait before doing another spot bid to AWS. Defaults to 300 seconds.
+    * More information can be found [here](https://aws.amazon.com/ec2/spot/pricing/).
+* *cool_down_threshold:* Time to wait before doing another scale action again. Defaults to 360 seconds.
 
 #### Optional properties
 * *tags:* A map containing custom metadata tags that must assigned to TP instances. *(optional)*
@@ -68,10 +71,6 @@ currently supports the following properties:
 * *monitoring_enabled:* There are two types of Monitoring: basic and detailed.
   You can enable or disable the detailed monitoring by setting this field to True or False. *(optional)*
     * More information can be found [here](https://aws.amazon.com/cloudwatch/details/#amazon-ec2-monitoring).
-* *bid_threshold:* Time to wait before doing another spot bid to AWS. Defaults to 300 seconds.
-    * More information can be found [here](https://aws.amazon.com/ec2/spot/pricing/).
-* *cool_down_threshold:* Time to wait before updating tiopatinhas target again.
-  Target is the number of instances managed by the ASG. Defaults to 360 seconds.
 
 ### Coding with tiopatinhas  ###
 
