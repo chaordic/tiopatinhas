@@ -232,7 +232,7 @@ class TPManager:
     def bid(self, force=False):
         elapsed_time = time.time() - self.last_bid
         if not force and elapsed_time < self.bid_threshold:
-            self.logger.info("bid(): last change was too recent, skipping bid! Remaining time to next change %s",
+            self.logger.info(">> bid(): last bid was too recent, skipping bid! Remaining time to next change %s",
                              self.bid_threshold - elapsed_time)
             time.sleep(10)
             return
@@ -301,7 +301,7 @@ class TPManager:
             instance_info = self.ec2.get_all_instances(instance_ids=[instance_id])[0].instances[0]
             uptime = datetime.utcnow() - datetime.strptime(instance_info.launch_time, '%Y-%m-%dT%H:%M:%S.%fZ')
             if uptime > grace_period_delta:
-                self.logger.info(">> maybe_terminate(): %s is unhealthy_ids for longer than %s minutes - killing it!",
+                self.logger.info(">> maybe_terminate(): %s is unhealthy for longer than %s minutes - killing it!",
                                  instance_id, self.grace_period_minutes)
                 self.dettach_instance(instance_id)
                 self.ec2.terminate_instances([instance_id])
@@ -378,7 +378,7 @@ class TPManager:
 
         elapsed_time = time.time() - self.last_change
 
-        if elapsed_time > self.cool_down_threshold:
+        if elapsed_time <= self.cool_down_threshold:
             self.logger.info("Not removing any instances, waiting for cool down!"
                              " Remaining time to next change %s", self.cool_down_threshold - elapsed_time)
             return False
