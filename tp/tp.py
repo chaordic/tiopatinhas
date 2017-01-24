@@ -139,14 +139,10 @@ class TPManager:
             self.previous_as_count = self.managed_by_autoscale()
 
     def is_ec2_state_running(self, instance_id):
-        def ec2_state(i_id):
-            return self.ec2.get_all_instance_status(instance_ids=[i_id])
-
         try:
-            found_instance = ec2_state(instance_id)
-            return len(found_instance) > 0 and found_instance[0].state_name not in (
-                'terminated', 'shutting-down')
-        except EC2ResponseError as inst:
+            found_instance = self.ec2.get_all_instance_status(instance_ids=[instance_id])
+            return len(found_instance) > 0 and found_instance[0].state_name == "running"
+        except EC2ResponseError, inst:
             if inst.error_code == "InvalidInstanceID.NotFound":
                 self.logger.warn("LB with invalid instance: %s", instance_id)
                 return False
@@ -434,8 +430,7 @@ class TPManager:
         all_instances = [r.instances for r in self.ec2.get_all_instances()]
         instances = chain.from_iterable(all_instances)
         for instance in instances:
-            if instance.tags.get('tp:group', None) == self.tapping_group.name and \
-                            instance.state not in ('terminated', 'shutting-down'):
+            if instance.tags.get('tp:group', None) == self.tapping_group.name and instance.state == "running":
                 self.emergency.append(instance)
                 if instance.id not in running_in_lb:
                     self.logger.info(">> load_state: Attaching new emergency instance %s to LB." % instance.id)
