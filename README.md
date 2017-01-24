@@ -106,3 +106,7 @@ You may need to use `sudo` depending on your environment setup.
 * Once the tp/tp.conf file is ready, execute tiopatinhas with the following command:
     * _python tp.py -g \<AutoScalingGroupName\>_ (this command must currently be executed from within the "tp" folder)
 * You must optionally supply options "-v" for verbose mode or "-d" for daemon mode.
+
+## License
+
+tiopatinhas is available under the [MIT license](LICENSE).
