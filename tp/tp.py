@@ -162,11 +162,7 @@ class TPManager:
         candidate = round(self.weight_factor * self.tapping_group.desired_capacity)
 
         # Never less than one
-        if candidate < 1:
-            candidate = 1
-
-        max_candidates = self.conf.get("max_candidates", 6)
-        candidate = min(candidate, max_candidates)
+        candidate = max(1, min(candidate, self.conf.get("max_candidates", 6)))
 
         if candidate != previous:
             self.logger.debug(">> guess_target(): changed target from %s to %s", previous, candidate)
