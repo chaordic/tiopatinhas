@@ -39,7 +39,7 @@ class AutoScaleInfo:
             lcs = self.autoscale.get_all_launch_configurations(names=[self.ag.launch_config_name])
             self.lc = lcs[0]
         except:
-            raise ValueError("Couldn't retrive LaunchConfiguration for %s" % autoscale_group_name)
+            raise ValueError("Couldn't retrieve LaunchConfiguration for %s" % autoscale_group_name)
 
         self.instance_type = self.lc.instance_type
         self.image_id = self.lc.image_id
@@ -98,10 +98,12 @@ class TPManager:
         self.last_bid = 0
         self.last_change = 0
         self.previous_as_count = None
+        self.previous_managed = 0
 
         self.bids = []
         self.live = []
         self.emergency = []
+        self.unhealthy_ids = set()
 
         self.ec2 = boto.ec2.connect_to_region(self.region)
         self.elb = boto.ec2.elb.connect_to_region(self.region)
@@ -124,7 +126,7 @@ class TPManager:
 
         if not self.user_data:
             self.logger.warn("Could not read user from launch configuration group: %s."
-                             "Will launch instances without user data.", self.tapping_group.lc.name)
+                             " Will launch instances without user data.", self.tapping_group.lc.name)
 
         self.logger.info("User data: \n%s", self.user_data)
 
@@ -136,6 +138,17 @@ class TPManager:
                              self.previous_as_count, self.managed_by_autoscale())
             self.previous_as_count = self.managed_by_autoscale()
 
+    def is_ec2_state_running(self, instance_id):
+        try:
+            found_instance = self.ec2.get_all_instance_status(instance_ids=[instance_id])
+            return len(found_instance) > 0 and found_instance[0].state_name == "running"
+        except EC2ResponseError, inst:
+            if inst.error_code == "InvalidInstanceID.NotFound":
+                self.logger.warn("LB with invalid instance: %s", instance_id)
+                return False
+            else:
+                raise inst
+
     def guess_target(self):
         if not self.started:
             self.target = min(self.managed_instances(), self.managed_by_autoscale())  # follow autoscale if stopped :)
@@ -146,24 +159,14 @@ class TPManager:
         previous = self.target
 
         # How many instances we should keep running
-        elapsed_time = time.time() - self.last_change
-        if elapsed_time > self.cool_down_threshold:
-            candidate = round(self.weight_factor * self.tapping_group.desired_capacity)
+        candidate = round(self.weight_factor * self.tapping_group.desired_capacity)
 
-            # Never less than one
-            if candidate < 1:
-                candidate = 1
+        # Never less than one
+        candidate = max(1, min(candidate, self.conf.get("max_candidates", 6)))
 
-            max_candidates = self.conf.get("max_candidates", 6)
-            candidate = min(candidate, max_candidates)
-            self.logger.debug("Current candidate for target instances: %s", str(candidate))
-
-            if candidate != previous:
-                self.logger.debug(">> guess_target(): changed target from %s to %s", previous, candidate)
-                self.target = candidate
-        else:
-            self.logger.info("guess_target(): not updating target for instances, waiting for cool down!"
-                             "Remaining time to next change %s", self.cool_down_threshold - elapsed_time)
+        if candidate != previous:
+            self.logger.debug(">> guess_target(): changed target from %s to %s", previous, candidate)
+            self.target = candidate
 
     def managed_by_autoscale(self):
         return int(self.tapping_group.desired_capacity)
@@ -220,7 +223,7 @@ class TPManager:
     def bid(self, force=False):
         elapsed_time = time.time() - self.last_bid
         if not force and elapsed_time < self.bid_threshold:
-            self.logger.info("bid(): last change was too recent, skipping bid! Remaining time to next change %s",
+            self.logger.info(">> bid(): last bid was too recent, skipping bid! Remaining time to next change %s",
                              self.bid_threshold - elapsed_time)
             time.sleep(10)
             return
@@ -289,7 +292,7 @@ class TPManager:
             instance_info = self.ec2.get_all_instances(instance_ids=[instance_id])[0].instances[0]
             uptime = datetime.utcnow() - datetime.strptime(instance_info.launch_time, '%Y-%m-%dT%H:%M:%S.%fZ')
             if uptime > grace_period_delta:
-                self.logger.info(">> maybe_terminate(): %s is unhealthy_ids for longer than %s minutes - killing it!",
+                self.logger.info(">> maybe_terminate(): %s is unhealthy for longer than %s minutes - killing it!",
                                  instance_id, self.grace_period_minutes)
                 self.dettach_instance(instance_id)
                 self.ec2.terminate_instances([instance_id])
@@ -300,7 +303,11 @@ class TPManager:
                     self.live.remove(instance)
 
     def maybe_promote(self, spot_request):
-        if self.check_alive(spot_request.instance_id):
+        elapsed_time = time.time() - self.last_change
+        if elapsed_time <= self.cool_down_threshold:
+            self.logger.info("Not promoting any instances, waiting for cool down!"
+                             " Remaining time to next change %s", self.cool_down_threshold - elapsed_time)
+        elif self.check_alive(spot_request.instance_id):
             self.logger.info(">> maybe_promote(): %s is alive, promoting", spot_request)
 
             self.attach_instance(spot_request.instance_id, "TP")
@@ -327,10 +334,10 @@ class TPManager:
 
         minute = int(instance.launch_time.split(":")[1])
         minute_now = datetime.now().minute
-        o = minute - minute_now
-        if o < -1:
-            o = (minute + 60) - minute_now
-        return o
+        time_remaining = minute - minute_now
+        if time_remaining < -1:
+            time_remaining = (minute + 60) - minute_now
+        return time_remaining
 
     def maybe_demote(self):
         # First remove open, unfulfilled bids
@@ -360,6 +367,13 @@ class TPManager:
                 self.bids.remove(bid)
                 return True
 
+        elapsed_time = time.time() - self.last_change
+
+        if elapsed_time <= self.cool_down_threshold:
+            self.logger.info("Not removing any instances, waiting for cool down!"
+                             " Remaining time to next change %s", self.cool_down_threshold - elapsed_time)
+            return False
+
         self.live.sort(key=self.proximity)
 
         if self.proximity(self.live[0]) < 3 or not self.started:
@@ -378,19 +392,6 @@ class TPManager:
         return False
 
     def load_state(self):
-        # TODO move it from here to somewhere else
-        def is_ec2_state_running(instance_id):
-            ec2_state = lambda instance_id: self.ec2.get_all_instance_status(instance_ids=[instance_id])
-            try:
-                instance = ec2_state(instance_id)
-                return len(instance) > 0 and instance[0].state_name not in ('terminated', 'shutting-down')
-            except EC2ResponseError as inst:
-                if inst.error_code == "InvalidInstanceID.NotFound":
-                    self.logger.warn("LB with invalid instance: %s", instance.id)
-                    return False
-                else:
-                    raise inst
-
         running_in_lb = []
         self.unhealthy_ids = set()
 
@@ -400,7 +401,7 @@ class TPManager:
                     self.unhealthy_ids.add(instance_state.instance_id)
                 # Some times some dead instances get stuck on LB and boto lib doesn't know how to treat it
                 # This make sure that instance is alive and avoid bug on get_all_instances method
-                elif is_ec2_state_running(instance_state.instance_id):
+                elif self.is_ec2_state_running(instance_state.instance_id):
                     running_in_lb.append(instance_state.instance_id)
                 else:
                     self.dettach_instance(instance_state.instance_id)
@@ -425,8 +426,7 @@ class TPManager:
         all_instances = [r.instances for r in self.ec2.get_all_instances()]
         instances = chain.from_iterable(all_instances)
         for instance in instances:
-            if instance.tags.get('tp:group', None) == self.tapping_group.name and \
-                            instance.state not in ('terminated', 'shutting-down'):
+            if instance.tags.get('tp:group', None) == self.tapping_group.name and instance.state == "running":
                 self.emergency.append(instance)
                 if instance.id not in running_in_lb:
                     self.logger.info(">> load_state: Attaching new emergency instance %s to LB." % instance.id)
@@ -447,9 +447,10 @@ class TPManager:
     def print_state(self):
         self.logger.debug("*** Current state:")
         self.logger.debug("Managed by Autoscale: " + str(self.managed_by_autoscale()))
-        self.logger.debug("Managed by TP: " + str(self.managed_instances()))
-        self.logger.debug("Target: " + str(self.target))
-        self.logger.debug("Live: " + ", ".join([x.instance_id for x in self.live]))
+        self.logger.debug("TP target: " + str(self.target))
+        self.logger.debug("Instances managed by TP: " + str(self.managed_instances()))
+        self.logger.debug("TP live instances: " + str(len(self.live)) + " [" +
+                          ", ".join([x.instance_id for x in self.live]) + "]")
         self.logger.debug("Emergency: " + ", ".join([x.id for x in self.emergency]))
         self.logger.debug("LB Unhealthy: " + ", ".join(self.unhealthy_ids))
 
@@ -519,13 +520,13 @@ def daemonize():
 
     in_ = file("/dev/null", 'r')
     out = file("/dev/null", 'a+')
-    err = file("/dev/null", 'a+')
+    error = file("/dev/null", 'a+')
 
     flush_output()
 
     os.dup2(in_.fileno(), sys.stdin.fileno())
     os.dup2(out.fileno(), sys.stdout.fileno())
-    os.dup2(err.fileno(), sys.stderr.fileno())
+    os.dup2(error.fileno(), sys.stderr.fileno())
 
 
 if __name__ == '__main__':

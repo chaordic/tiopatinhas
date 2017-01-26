@@ -33,8 +33,7 @@ use Spot Instances in systems which are not fault tolerant.
 1. Make sure the boto python package is installed in your system. If you
 use debian or ubuntu you can install it by typing: 'sudo pip install boto'.
 2. Make sure your AWS credentials are specified in a boto configuration file
-(typically ~/.boto). Instruction on how to setup this file can be found here:
-https://code.google.com/p/boto/wiki/BotoConfig
+(typically ~/.boto). Instruction on how to setup this file can be found [here](https://code.google.com/p/boto/wiki/BotoConfig).
 3. To run the setup, you may need to install [setuptools](https://setuptools.readthedocs.io/en/latest/)
 
 ### Configuring tiopatinhas ###
@@ -57,18 +56,21 @@ currently supports the following properties:
 
 * *spot_type:* The instance type to bid for in the spot market (recommended: the same instance from the ASG)
 * *emergency_type:* The instance type to buy in case of market crash (recommended: the same instance from the ASG)
+* *bid_threshold:* Time to wait before doing another spot bid to AWS. Defaults to 300 seconds.
+    * More information can be found [here](https://aws.amazon.com/ec2/spot/pricing/).
+* *cool_down_threshold:* Time to wait before doing another scale action again. Defaults to 360 seconds.
 
 #### Optional properties
 * *tags:* A map containing custom metadata tags that must assigned to TP instances. *(optional)*
-    * more info: http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/Using_Tags.html
+    * More information can be found [here](http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/Using_Tags.html).
 * *user_data_file:* An optional script or data that will be supplied to the instance on startup.
   If not provided, it will try to get from the Launch Configuration Group. *(optional)*
-    * more info: http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/AESDG-chapter-instancedata.html
+    * More information can be found [here](http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/AESDG-chapter-instancedata.html).
 * *subnet_id:* The VPC's subnet id that will be used by instances TP will manage. *(optional)*
-    * more info: http://docs.aws.amazon.com/AmazonVPC/latest/UserGuide/VPC_Subnets.html
+    * More information can be found [here](http://docs.aws.amazon.com/AmazonVPC/latest/UserGuide/VPC_Subnets.html).
 * *monitoring_enabled:* There are two types of Monitoring: basic and detailed.
   You can enable or disable the detailed monitoring by setting this field to True or False. *(optional)*
-    * more info: https://aws.amazon.com/cloudwatch/details/#amazon-ec2-monitoring
+    * More information can be found [here](https://aws.amazon.com/cloudwatch/details/#amazon-ec2-monitoring).
 
 ### Coding with tiopatinhas  ###
 
@@ -104,3 +106,7 @@ You may need to use `sudo` depending on your environment setup.
 * Once the tp/tp.conf file is ready, execute tiopatinhas with the following command:
     * _python tp.py -g \<AutoScalingGroupName\>_ (this command must currently be executed from within the "tp" folder)
 * You must optionally supply options "-v" for verbose mode or "-d" for daemon mode.
+
+## License
+
+tiopatinhas is available under the [MIT license](LICENSE).
