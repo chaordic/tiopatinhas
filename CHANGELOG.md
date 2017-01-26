@@ -1,3 +1,7 @@
+## 1.0.3 (January 26, 2017)
+    - Cool down no longer affects the tiopatinhas target anymore, target is always updated
+    - Cool down is now added to instance's promotion and demotion
+
 ## 1.0.2 (December 02, 2016)
     - Added cool down and bid threshold times in the configuration file
     - Refresh state doesn't affect tiopatinhas' actions anymore
