@@ -27,7 +27,7 @@ class AutoScaleInfoException(Exception):
 class AutoScaleInfo:
     def __init__(self, autoscale_group_name, region):
         self.autoscale = boto.ec2.autoscale.connect_to_region(region)
-        ags = self.autoscale.get_all_groups()
+        ags = self.autoscale.get_all_groups(max_records=100)
         self.name = autoscale_group_name
 
         try:
